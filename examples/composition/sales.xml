@@ -1,0 +1,8 @@
+<Frame>
+  <Plot x=":year" y=":sales">
+    <DemoTheme>
+      <BgColor>#000000</BgColor>
+    </DemoTheme>
+    <GeomLine />
+  </Plot>
+</Frame>

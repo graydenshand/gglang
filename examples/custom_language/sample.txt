@@ -1,0 +1,16 @@
+// Scatter plot with line
+TITLE "Price of things by year."
+
+FACET USING :name WITH 2 COLUMNS
+
+MAP :year TO x, :price TO y
+
+GEOM POINT
+GEOM SMOOTH LINEAR
+
+SCALE X_CONTINUOUS
+SCALE Y_CONTINUOUS
+
+COORD CARTESIAN
+
+BG_COLOR #ffffff

@@ -1,0 +1,22 @@
+// translate this ggplot example from https://ggplot2-book.org/layers.html#building-a-plot
+// ggplot(mpg, aes(displ, hwy)) + 
+// geom_point() + 
+// geom_line(data = grid, colour = "blue", linewidth = 1.5) +
+// geom_text(data = outlier, aes(label = model))
+
+MAP :displ TO x, :hwy TO y
+
+// Base scatterplot
+GEOM POINT
+
+// Smooth line
+GEOM LINE {
+    MAP :displ_smooth TO x, :hwy_smooth TO y
+    LINEWIDTH 1.5
+    COLOR "blue"
+}
+
+// Label model name of outliers
+GEOM TEXT {
+    MAP :displ_outlier TO x, :hwy_outlier TO y, :model TO label
+}

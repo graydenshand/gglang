@@ -1,0 +1,15 @@
+[package]
+name = "ggc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.100"
+bytemuck = { version = "1.24.0", features = ["derive"] }
+env_logger = "0.11.8"
+log = "0.4.28"
+pest = "2.8.3"
+pest_derive = "2.8.3"
+pollster = "0.4.0"
+wgpu = "27.0.1"
+winit = { version = "0.30.12", features = ["android-native-activity"] }
