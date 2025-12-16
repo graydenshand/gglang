@@ -1,4 +1,5 @@
 /// A scale representing numeric data from some min to a max
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ContinuousNumericScale {
     pub min: f64,
     pub max: f64,
@@ -6,9 +7,10 @@ pub struct ContinuousNumericScale {
 impl ContinuousNumericScale {
     /// New from vec
     pub fn from_vec(values: &Vec<f64>) -> Self {
-        let (xmin, xmax) = values.iter().fold((f64::MIN, f64::MAX), |(max, min), new| {
-            (max.max(*new), min.min(*new))
+        let (xmin, xmax) = values.iter().fold((f64::MAX, f64::MIN), |(min, max), new| {
+            (min.min(*new), max.max(*new))
         });
+
         Self {
             min: xmin,
             max: xmax,
@@ -20,16 +22,21 @@ impl ContinuousNumericScale {
         self.min <= value && value <= self.max
     }
 
-    /// Map or translate a value on this scale to another scale
-    pub fn map_to(&self, other: &Self, value: f64) -> f64 {
+    /// Map a position on this scale to another scale
+    pub fn map_position(&self, other: &Self, position: f64) -> f64 {
         assert!(
-            self.contains(value),
+            self.contains(position),
             "Value not in range ({}, {}): {}",
             self.min,
             self.max,
-            value
+            position
         );
-        (value - self.min) / (self.max - self.min) * (other.max - other.min) + other.min
+        (position - self.min) / (self.max - self.min) * (other.max - other.min) + other.min
+    }
+
+    /// Translate a size in this scale to another scale
+    pub fn map_size(&self, other: &Self, size: f64) -> f64 {
+        size / self.span() * other.span()
     }
 
     /// Difference between max and min of this scale
@@ -51,6 +58,7 @@ impl ContinuousNumericScale {
     pub fn scale(&self, factor: f64) -> Self {
         let margin = self.span() * (factor / 2.);
         let midpoint = self.midpoint();
+
         Self {
             min: midpoint - margin,
             max: midpoint + margin,
@@ -67,3 +75,21 @@ impl ContinuousNumericScale {
 }
 
 pub const NDC_SCALE: ContinuousNumericScale = ContinuousNumericScale { min: -1., max: 1. };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_to() {
+        let scale_a = ContinuousNumericScale { min: 0., max: 10. };
+        let scale_b = ContinuousNumericScale {
+            min: 100.,
+            max: 200.,
+        };
+        assert_eq!(scale_a.map_position(&scale_b, 5.), 150.);
+
+        let scale_b = ContinuousNumericScale { min: -1., max: 1. };
+        assert_eq!(scale_a.map_position(&scale_b, 5.), 0.);
+    }
+}

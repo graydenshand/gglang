@@ -1,91 +1,8 @@
+use crate::shape::{Rectangle, Shape, Unit};
+use crate::transform::{ContinuousNumericScale, NDC_SCALE};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
-/// The window module owns the window, rendering loop, and base surface that all
-/// other graphical elements are arranged on.
-use std::{sync::Arc, vec};
-
-use crate::frame::Frame;
-use crate::geometry::{Rectangle, Shape, Unit};
-use crate::transform::{ContinuousNumericScale, NDC_SCALE};
-use winit::window::Window;
-
-// pub fn build_plot(
-//     device: &wgpu::Device,
-//     config: &wgpu::SurfaceConfiguration,
-//     window: &Arc<Window>,
-// ) -> Frame {
-//     // println!("build plot");
-//     // Data
-//     let x = vec![30., 90., 65., 100.];
-//     let y = vec![-10., 30., 100., 200.];
-
-//     // Theme
-//     let margin = 0.5;
-//     let size = window.inner_size();
-//     let width_1px = 2. / size.width as f32;
-//     let height_1px = 2. / size.height as f32;
-
-//     // Scales
-//     // here I select the bounds of the axes, this will later be automatically determined by the data. I pad the
-//     // min and max a small amount so no data points are bleeding into the margins.
-//     let x_scale = transform::ContinuousNumericScale { min: 0., max: 110. };
-//     let y_scale = transform::ContinuousNumericScale {
-//         min: -20.,
-//         max: 220.,
-//     };
-//     let window_x_scale = transform::ContinuousNumericScale {
-//         min: -1. + margin,
-//         max: 1. - margin,
-//     };
-//     let window_y_scale = transform::ContinuousNumericScale {
-//         min: -1. + margin,
-//         max: 1. - margin,
-//     };
-
-//     // Map data coordinates to window coordinates
-//     let mut rectangles = vec![];
-
-//     for i in 0..x.len() {
-//         let mapped_x = x_scale.map_to(&window_x_scale, x[i]);
-//         let mapped_y = y_scale.map_to(&window_y_scale, y[i]);
-//         rectangles.push(Rectangle::new(
-//             [mapped_x as f32, mapped_y as f32],
-//             [0.0, 0.0, 0.0],
-//             16. * width_1px,
-//             16. * height_1px,
-//         ));
-//     }
-
-//     // Axes
-//     let x_axis_width = height_1px;
-
-//     let xaxis = Rectangle::new(
-//         [
-//             (-1. + margin + window_x_scale.span() / 2.) as f32,
-//             -1. + margin as f32,
-//         ],
-//         [0.0, 0.0, 0.0],
-//         window_x_scale.span() as f32,
-//         x_axis_width,
-//     );
-//     rectangles.push(xaxis);
-
-//     let y_axis_width = width_1px;
-
-//     let yaxis = Rectangle::new(
-//         [
-//             -1. + margin as f32,
-//             (-1. + margin + window_y_scale.span() / 2.) as f32,
-//         ],
-//         [0.0, 0.0, 0.0],
-//         y_axis_width,
-//         window_y_scale.span() as f32,
-//     );
-//     rectangles.push(yaxis);
-
-//     Frame::new(device, config, rectangles)
-// }
 
 /// A model of a plot
 ///
@@ -115,10 +32,52 @@ pub struct Blueprint {
     theme: Theme,
 }
 impl Blueprint {
+    /// Create a new, empty blueprint
+    pub fn new() -> Self {
+        Self {
+            mappings: vec![],
+            layers: vec![],
+            scales: vec![],
+            facets: vec![],
+            coordinates: CoordinateSystem::Cartesian,
+            theme: Theme {},
+        }
+    }
+
+    pub fn with_layer(mut self, layer: Layer) -> Self {
+        self.layers.push(layer);
+        self
+    }
+
+    pub fn with_scale(mut self, scale: Box<dyn Scale>) -> Self {
+        self.scales.push(scale);
+        self
+    }
+
+    pub fn with_facet(mut self, facet: Variable) -> Self {
+        self.facets.push(facet);
+        self
+    }
+
+    pub fn with_mapping(mut self, mapping: Mapping) -> Self {
+        self.mappings.push(mapping);
+        self
+    }
+
+    pub fn with_coordinates(mut self, coordinates: CoordinateSystem) -> Self {
+        self.coordinates = coordinates;
+        self
+    }
+
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme = theme;
+        self
+    }
+
     /// Render a plot from this blueprint
-    fn render(&mut self, mut data: PlotData) -> Result<Vec<Box<dyn Shape>>, String> {
+    pub fn render(&mut self, mut data: PlotData) -> Result<Vec<Box<dyn Shape>>, String> {
         // Validate required mappings are satisfied for all geometries
-        for g in self.layers.iter().map(|l| l.geometry) {
+        for g in self.layers.iter().map(|l| &l.geometry) {
             for aes in g.required_aesthetics() {
                 if !data.contains(aes.name()) {
                     return Err(format!("Missing required aesthetic {}", aes.name()));
@@ -132,10 +91,9 @@ impl Blueprint {
         }
 
         // Apply facet transforms at this stage, grouping elements by facet value.
-
         let mut shapes: Vec<Box<dyn Shape>> = vec![];
         let mut layer_data_map = std::collections::HashMap::new();
-        &self.layers.iter().enumerate().for_each(|(i, layer)| {
+        self.layers.iter().enumerate().for_each(|(i, layer)| {
             // Copy data, then run stat transforms
             let mut layer_data = data.clone();
             layer_data = layer.stat.transform(&layer_data);
@@ -144,14 +102,14 @@ impl Blueprint {
             layer_data_map.insert(i, layer_data);
         });
         // fit scales
-        for scale in &self.scales {
+        for scale in &mut self.scales {
             scale.fit().expect("Scale can't be fit")
         }
-        // Render geoms, appending to shapes vec
-        &self.layers.iter().enumerate().for_each(|(i, layer)| {
+        // Render geoms, appending to shapes vecs
+        self.layers.iter().enumerate().for_each(|(i, layer)| {
             let layer_data = layer_data_map.get(&i).unwrap();
-            shapes.append(&mut layer.geometry.render(layer_data, self.scales));
-        };
+            shapes.append(&mut layer.geometry.render(layer_data, &self.scales));
+        });
 
         // Project shapes onto coordinate system
         // Render scales
@@ -173,14 +131,14 @@ type Variable = String;
 ///   - Stat Identity
 ///   - Position Identity
 
-struct Layer {
+pub struct Layer {
     geometry: Box<dyn Geometry>,
     mappings: Vec<Mapping>,
     stat: Box<dyn StatTransform>,
     position: Box<dyn PositionAdjustment>,
 }
 impl Layer {
-    fn new(
+    pub fn new(
         geometry: Box<dyn Geometry>,
         mappings: Vec<Mapping>,
         stat: Box<dyn StatTransform>,
@@ -208,7 +166,7 @@ impl Layer {
 ///
 /// The coordinates of shapes returned is later projected onto a coordinate
 /// system.
-trait Geometry {
+pub trait Geometry {
     /// These aesthetics are required to use this geometry.
     fn required_aesthetics(&self) -> Vec<Rc<dyn Aesthetic>>;
 
@@ -228,7 +186,7 @@ trait Geometry {
     ///
     /// Coordinates of the shapes are in data-space. These are later projected
     /// onto a coordinate system and translated into screen-space.
-    fn render(&self, data: PlotData, sclaes:  &Vec<Box<dyn Scale>>) -> Vec<Box<dyn Shape>>;
+    fn render(&self, data: &PlotData, sclaes: &Vec<Box<dyn Scale>>) -> Vec<Box<dyn Shape>>;
 
     /// The list of aesthetic families that may be used in this layer
     fn aesthetic_families(&self) -> Vec<Box<dyn AestheticFamily>> {
@@ -256,7 +214,7 @@ trait Geometry {
 
     /// Update scales using the data in this plot
     fn update_scales(&self, scales: &mut Vec<Box<dyn Scale>>, data: &PlotData) {
-        let mapped_data = layer.geometry.mapped_data(&data);
+        let mapped_data = self.mapped_data(&data);
         let families: Vec<String> = self
             .aesthetic_families()
             .iter()
@@ -296,28 +254,40 @@ trait Geometry {
 /// Required aesthetics: `x`, `y`
 ///
 /// Extra aeshetics: none
-struct GeomPoint;
+pub struct GeomPoint;
 impl Geometry for GeomPoint {
     fn required_aesthetics(&self) -> Vec<Rc<dyn Aesthetic>> {
         vec![Rc::new(AesX {}), Rc::new(AesY {})]
     }
 
-    fn render(&self, data: PlotData,  sclaes: &Vec<Box<dyn Scale>>) -> Vec<Box<dyn Shape>> {
+    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Box<dyn Shape>> {
         let mut rectangles: Vec<Box<dyn Shape>> = vec![];
-        // this assumes the x and y values have already been transformed into
-        // UnitArrays using position scales.
-        todo!("transform plot data into unit arrays");
-        let x = match data.data.get("x").unwrap() {
-            PlotParameter::UnitArray(v) => v.clone(),
-            _ => panic!("uh oh"),
+        let x_scale = scales
+            .iter()
+            .find(|s| s.aesthetic_family().name() == "HorizontalPosition")
+            .unwrap();
+        let x = data
+            .data
+            .get("x")
+            .expect("key existance was already validated");
+        let x_mapped = match x_scale.map(x).expect("scales were fit to data") {
+            PlotParameter::UnitArray(v) => v,
+            _ => panic!("expected unit array from position scale"),
         };
-        let y = match data.data.get("y").unwrap() {
-            PlotParameter::UnitArray(v) => v.clone(),
-            _ => panic!("uh oh"),
+
+        let y_scale = scales
+            .iter()
+            .find(|s| s.aesthetic_family().name() == "VerticalPosition")
+            .unwrap();
+        let y = data.data.get("y").expect("already validated");
+        let y_mapped = match y_scale.map(y).expect("scales were fit to data") {
+            PlotParameter::UnitArray(v) => v,
+            _ => panic!("expected unit array from position scale"),
         };
+
         for i in 0..x.len() {
             rectangles.push(Box::new(Rectangle::new(
-                [x[i], y[i]],
+                [x_mapped[i], y_mapped[i]],
                 Unit::Pixels(16),
                 Unit::Pixels(16),
                 [0.0, 0.0, 0.0],
@@ -336,11 +306,11 @@ struct GeomBar;
 // impl Geometry for GeomBar {}
 
 /// A stat
-trait StatTransform {
+pub trait StatTransform {
     /// Transform data before plotting a geometry
     fn transform(&self, data: &PlotData) -> PlotData;
 }
-struct IdentityTransform;
+pub struct IdentityTransform;
 impl StatTransform for IdentityTransform {
     fn transform(&self, data: &PlotData) -> PlotData {
         data.clone()
@@ -349,10 +319,10 @@ impl StatTransform for IdentityTransform {
 impl PositionAdjustment for IdentityTransform {}
 
 /// A position
-trait PositionAdjustment {}
+pub trait PositionAdjustment {}
 
 // Stores the mapping of a visual channel to a column
-enum Mapping {
+pub enum Mapping {
     X(String),
     Y(String),
 }
@@ -462,13 +432,13 @@ pub trait Scale: Any {
 /// ScaleXContinuous is a positional scale.
 ///
 /// It maps data points to horizontal positions over a portion of the screen.
-struct ScaleXContinuous {
+pub struct ScaleXContinuous {
     /// The scale of the xaxis in data units
     data_scale: Option<ContinuousNumericScale>,
 }
 impl ScaleXContinuous {
     /// Create a new scale, mapping to a specific region of the screen
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { data_scale: None }
     }
 }
@@ -489,7 +459,7 @@ impl Scale for ScaleXContinuous {
             Ok(PlotParameter::UnitArray(
                 values
                     .iter()
-                    .map(|v| Unit::NDC(s.map_to(&NDC_SCALE, *v) as f32))
+                    .map(|v| Unit::NDC(s.map_position(&NDC_SCALE, *v) as f32))
                     .collect(),
             ))
         } else {
@@ -521,6 +491,84 @@ impl Scale for ScaleXContinuous {
     /// The aesthetic family fo the scale
     fn aesthetic_family(&self) -> Box<dyn AestheticFamily> {
         Box::new(FamHPosition)
+    }
+
+    /// Append a set of values to the scale.
+    ///
+    /// Expands the min and max values of the scale if they don't
+    fn append(&mut self, v: &PlotParameter) -> Result<(), String> {
+        let new_scale = ContinuousNumericScale::from_vec(&v.as_f64()?);
+        if let Some(s) = &self.data_scale {
+            self.data_scale = Some(s.union(&new_scale));
+        } else {
+            self.data_scale = Some(new_scale);
+        }
+        Ok(())
+    }
+}
+
+/// ScaleYContinuous is a positional scale.
+///
+/// It maps data points to horizontal positions over a portion of the screen.
+pub struct ScaleYContinuous {
+    /// The scale of the xaxis in data units
+    data_scale: Option<ContinuousNumericScale>,
+}
+impl ScaleYContinuous {
+    /// Create a new scale, mapping to a specific region of the screen
+    pub fn new() -> Self {
+        Self { data_scale: None }
+    }
+}
+impl Scale for ScaleYContinuous {
+    /// Extend scale by 10% to add a margin between data points and plot boundaries
+    fn fit(&mut self) -> Result<(), String> {
+        if let Some(s) = &self.data_scale {
+            self.data_scale = Some(s.scale(1.1));
+        }
+        Ok(())
+    }
+
+    /// Translate data values into relative ndc values for rendering position on screen
+    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
+        let values = v.as_f64()?;
+
+        if let Some(s) = &self.data_scale {
+            Ok(PlotParameter::UnitArray(
+                values
+                    .iter()
+                    .map(|v| Unit::NDC(s.map_position(&NDC_SCALE, *v) as f32))
+                    .collect(),
+            ))
+        } else {
+            Err("Scale is uninitialized".into())
+        }
+    }
+
+    /// Render y axis
+    fn render(&self) -> Vec<Box<dyn Shape>> {
+        let mut shapes: Vec<Box<dyn Shape>> = vec![];
+
+        // draw primary line the full width of the allocated space
+        let xaxis = Rectangle::new(
+            // place the center of the axis in the center of our window segment
+            [
+                Unit::NDC(NDC_SCALE.midpoint() as f32),
+                Unit::NDC(NDC_SCALE.midpoint() as f32),
+            ],
+            Unit::Pixels(1), // fixed 1px line width
+            Unit::NDC(NDC_SCALE.span() as f32),
+            [0.0, 0.0, 0.0], // black
+        );
+        shapes.push(Box::new(xaxis) as Box<dyn Shape>);
+
+        // Todo: add tickmarks and labels
+        shapes
+    }
+
+    /// The aesthetic family fo the scale
+    fn aesthetic_family(&self) -> Box<dyn AestheticFamily> {
+        Box::new(FamVPosition)
     }
 
     /// Append a set of values to the scale.
@@ -586,8 +634,18 @@ pub struct PlotData {
     data: HashMap<String, PlotParameter>,
 }
 impl PlotData {
-    fn contains(&self, key: &str) -> bool {
+    pub fn new() -> Self {
+        Self {
+            data: HashMap::new(),
+        }
+    }
+
+    pub fn contains(&self, key: &str) -> bool {
         self.data.contains_key(key)
+    }
+
+    pub fn insert(&mut self, key: String, value: PlotParameter) {
+        self.data.insert(key, value);
     }
 }
 
@@ -596,8 +654,8 @@ pub struct MappedData {
     data: Vec<(Rc<dyn Aesthetic>, PlotParameter)>,
 }
 impl MappedData {
-    fn aesthetics(&self) -> Vec<&Box<dyn Aesthetic>> {
-        self.data.iter().map(|(aes, _)| aes).collect()
+    fn aesthetics(&self) -> Vec<Rc<dyn Aesthetic>> {
+        self.data.iter().map(|(aes, _)| aes).cloned().collect()
     }
 }
 
@@ -616,7 +674,10 @@ mod test {
         let bp = Blueprint {
             mappings: vec![],
             layers: vec![layer],
-            scales: vec![Scale::XContinuous, Scale::YContinuous],
+            scales: vec![
+                Box::new(ScaleXContinuous::new()),
+                Box::new(ScaleYContinuous::new()),
+            ],
             facets: vec![],
             coordinates: CoordinateSystem::Cartesian,
             theme: Theme {},

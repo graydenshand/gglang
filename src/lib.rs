@@ -44,7 +44,7 @@ Layer 4
 */
 
 pub mod app;
-mod geometry;
 mod frame;
 mod plot;
+mod shape;
 pub mod transform;

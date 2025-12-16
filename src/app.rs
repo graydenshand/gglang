@@ -3,7 +3,6 @@
 use std::{iter, sync::Arc, vec};
 
 use crate::frame::Frame;
-use crate::plot::build_plot;
 use winit::{
     application::ApplicationHandler,
     event::*,
@@ -22,7 +21,7 @@ pub struct AppState {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     window: Arc<Window>,
-    layers: Vec<Frame>,
+    frame: Option<Frame>,
 }
 
 impl AppState {
@@ -95,7 +94,7 @@ impl AppState {
             config,
             is_surface_configured: false,
             window,
-            layers: vec![],
+            frame: None,
         })
     }
 
@@ -110,8 +109,8 @@ impl AppState {
     }
 
     fn update(&mut self) {
-        let layer1 = build_plot(&self.device, &self.config, &self.window);
-        self.layers = vec![layer1];
+        let frame = Frame::new(&self.device, &self.config, self.window.clone());
+        self.frame = Some(frame);
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -155,8 +154,8 @@ impl AppState {
                 timestamp_writes: None,
             });
 
-            for layer in self.layers.iter() {
-                layer.render(&mut render_pass);
+            if let Some(frame) = &mut self.frame {
+                frame.render(&mut render_pass);
             }
         }
 
