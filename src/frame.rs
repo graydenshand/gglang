@@ -39,7 +39,8 @@ impl Frame {
             Box::new(plot::IdentityTransform {}),
             Box::new(plot::IdentityTransform {}),
         );
-        let mut bp = plot::Blueprint::new()
+        let theme = plot::Theme::default();
+        let mut bp = plot::Blueprint::new(&theme)
             .with_layer(layer)
             .with_scale(Box::new(plot::ScaleXContinuous::new()))
             .with_scale(Box::new(plot::ScaleYContinuous::new()));
@@ -55,19 +56,10 @@ impl Frame {
         );
         // </hack>
 
-        let window_size = window.inner_size();
-        let window_segment = shape::WindowSegment::new(
-            transform::NDC_SCALE,
-            transform::NDC_SCALE,
-            transform::ContinuousNumericScale {
-                min: 0.,
-                max: window_size.width as f64,
-            },
-            transform::ContinuousNumericScale {
-                min: 0.,
-                max: window_size.height as f64,
-            },
-        );
+        let mut window_segment = shape::WindowSegment::new_root(window.clone());
+        println!("{:?}", window_segment);
+        window_segment = window_segment.with_margin(theme.window_margin);
+        println!("{:?}", window_segment);
 
         let mut vertices = vec![];
         let mut indices = vec![];
@@ -84,16 +76,14 @@ impl Frame {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some("vs_main"), // 1.
-                buffers: &[Vertex::desc()],   // 2.
+                entry_point: Some("vs_main"),
+                buffers: &[Vertex::desc()],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                // 3.
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    // 4.
                     format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
@@ -101,25 +91,22 @@ impl Frame {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, // 2.
+                front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: None, // 1.
+            depth_stencil: None,
             multisample: wgpu::MultisampleState {
-                count: 1,                         // 2.
-                mask: !0,                         // 3.
-                alpha_to_coverage_enabled: false, // 4.
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
             },
-            multiview: None, // 5.
-            cache: None,     // 6.
+            multiview: None,
+            cache: None,
         });
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

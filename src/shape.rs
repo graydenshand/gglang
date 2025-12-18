@@ -1,7 +1,11 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use winit::window::Window;
 
-use crate::transform::{ContinuousNumericScale, NDC_SCALE};
+use crate::{
+    plot::Scale,
+    transform::{ContinuousNumericScale, NDC_SCALE},
+};
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
@@ -30,29 +34,49 @@ impl Vertex {
     }
 }
 
-/// A 1d vector in a particular coordinate system, can represent either
-/// position or length along an axis.
+/// A value in a particular coordinate system
 #[derive(Debug, Clone, Copy)]
 pub enum Unit {
-    // vector in pixel coordinates
+    // Pixels
     Pixels(u32),
-    // vector in normalized device coordinates (-1,1)
+    // Normalized Device Coordinates (-1,1)
     NDC(f32),
+    // Percent (0, 1)
+    Percent(f32),
 }
 impl Unit {
-    /// Convert a vector in pixel coordinates to a vector in NDC
+    /// Convert to a Unit::NDC
+    fn as_ndc(&self, pixels: u32) -> Unit {
+        match self {
+            Unit::NDC(v) => Unit::NDC(*v),
+            Unit::Pixels(v) => Unit::NDC(*v as f32 / pixels as f32),
+            Unit::Percent(v) => Unit::NDC((v / 100. * 2.0) as f32),
+        }
+    }
+    /// Convert to a Unit::Pixels
+    fn as_px(&self, pixels: u32) -> Unit {
+        match self {
+            Unit::NDC(v) => Unit::Pixels((*v / 2.0 * pixels as f32) as u32),
+            Unit::Pixels(v) => Unit::Pixels(*v),
+            Unit::Percent(v) => Unit::Pixels((v / 100. * pixels as f32) as u32),
+        }
+    }
+    /// Extract the inner value, and coerce to f64.
     ///
-    /// Args
-    /// - pixels: the number of pixels along the dimension
-    fn px_to_ndc(&self, pixels: f32) -> Result<Unit, &str> {
-        if let Self::Pixels(v) = self {
-            Ok(Self::NDC(2. / pixels * *v as f32))
-        } else {
-            Err("Not a Pixel coordinate")
+    /// WARNING: this function isn't completely safe. All enum variants will
+    /// return a compliant value, but the interpretation of that value depends
+    /// on the variant. You should only use this when you already know the
+    /// value's variant.
+    fn as_f64(&self) -> f64 {
+        match self {
+            Unit::Pixels(v) => *v as f64,
+            Unit::NDC(v) => *v as f64,
+            Unit::Percent(v) => *v as f64,
         }
     }
 }
 
+#[derive(Debug)]
 pub struct WindowSegment {
     /// Window segment in NDC units
     ndc_scale_x: ContinuousNumericScale,
@@ -77,53 +101,81 @@ impl WindowSegment {
         }
     }
 
+    /// Create a new WindowSegment for the entire window.
+    pub fn new_root(window: std::sync::Arc<Window>) -> Self {
+        Self::new(
+            NDC_SCALE,
+            NDC_SCALE,
+            ContinuousNumericScale {
+                min: 0.,
+                max: window.inner_size().width as f64,
+            },
+            ContinuousNumericScale {
+                min: 0.,
+                max: window.inner_size().height as f64,
+            },
+        )
+    }
+
     /// Map an x position to absolute window coordinates
     pub fn abs_x(&self, x: &Unit) -> f32 {
         match x {
             // relative NDC coordinates
-            Unit::NDC(v) => {
-                let relative_ndc_scale = NDC_SCALE;
-                relative_ndc_scale.map_position(&self.ndc_scale_x, *v as f64) as f32
-            }
+            Unit::NDC(v) => NDC_SCALE.map_position(&self.ndc_scale_x, *v as f64) as f32,
             // pixel coordinates
             Unit::Pixels(v) => self
                 .pixel_scale_x
                 .map_position(&self.ndc_scale_x, *v as f64) as f32,
+            Unit::Percent(v) => todo!("support percents"),
         }
     }
 
     /// Map a width unit to absolute window coordinates
     pub fn abs_width(&self, x: &Unit) -> f32 {
         match x {
-            Unit::NDC(v) => {
-                let relative_ndc_scale = NDC_SCALE;
-                relative_ndc_scale.map_size(&self.ndc_scale_x, *v as f64) as f32
-            }
+            Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_x, *v as f64) as f32,
             Unit::Pixels(v) => self.pixel_scale_x.map_size(&self.ndc_scale_x, *v as f64) as f32,
+            Unit::Percent(v) => todo!("support percents"),
         }
     }
 
     /// Map a y position to absolute window coordinates
     pub fn abs_y(&self, y: &Unit) -> f32 {
         match y {
-            Unit::NDC(v) => {
-                let relative_ndc_scale = ContinuousNumericScale { min: -1., max: 1. };
-                relative_ndc_scale.map_position(&self.ndc_scale_y, *v as f64) as f32
-            }
+            Unit::NDC(v) => NDC_SCALE.map_position(&self.ndc_scale_y, *v as f64) as f32,
             Unit::Pixels(v) => self
                 .pixel_scale_y
                 .map_position(&self.ndc_scale_y, *v as f64) as f32,
+            Unit::Percent(v) => todo!("support percents"),
         }
     }
 
     /// Map a height unit to absolute window coordinates
     pub fn abs_height(&self, y: &Unit) -> f32 {
         match y {
-            Unit::NDC(v) => {
-                let relative_ndc_scale = ContinuousNumericScale { min: -1., max: 1. };
-                relative_ndc_scale.map_size(&self.ndc_scale_y, *v as f64) as f32
-            }
+            Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_y, *v as f64) as f32,
             Unit::Pixels(v) => self.pixel_scale_y.map_size(&self.ndc_scale_y, *v as f64) as f32,
+            Unit::Percent(v) => todo!("support percents"),
+        }
+    }
+
+    /// Create a new WindowSegment with margin (padding) on each side
+    ///
+    /// The margin is subtracted from all sides of the current window segment,
+    /// creating a smaller window segment with the specified padding.
+    pub fn with_margin(&self, margin: Unit) -> Self {
+        // Convert margin to NDC and pixel units for both axes
+        let margin_ndc_x = margin.as_ndc(self.pixel_scale_x.span() as u32);
+        let margin_ndc_y = margin.as_ndc(self.pixel_scale_y.span() as u32);
+        let margin_pixels_x = margin_ndc_x.as_px(self.pixel_scale_x.span() as u32);
+        let margin_pixels_y = margin_ndc_y.as_px(self.pixel_scale_y.span() as u32);
+
+        // Create new scales with margin applied
+        Self {
+            ndc_scale_x: self.ndc_scale_x.shrink(margin_ndc_x.as_f64()),
+            ndc_scale_y: self.ndc_scale_y.shrink(margin_ndc_y.as_f64()),
+            pixel_scale_x: self.pixel_scale_x.shrink(margin_pixels_x.as_f64()),
+            pixel_scale_y: self.pixel_scale_y.shrink(margin_pixels_y.as_f64()),
         }
     }
 }

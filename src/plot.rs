@@ -1,4 +1,4 @@
-use crate::shape::{Rectangle, Shape, Unit};
+use crate::shape::{Rectangle, Shape, Unit, WindowSegment};
 use crate::transform::{ContinuousNumericScale, NDC_SCALE};
 use std::any::Any;
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use std::rc::Rc;
 /// Facets
 /// Coordinates
 /// Theme
-pub struct Blueprint {
+pub struct Blueprint<'a> {
     /// Default mappings of data to visual channels
     mappings: Vec<Mapping>,
 
@@ -29,18 +29,18 @@ pub struct Blueprint {
     coordinates: CoordinateSystem,
 
     /// Theme settings
-    theme: Theme,
+    theme: &'a Theme,
 }
-impl Blueprint {
+impl<'a> Blueprint<'a> {
     /// Create a new, empty blueprint
-    pub fn new() -> Self {
+    pub fn new(theme: &'a Theme) -> Self {
         Self {
             mappings: vec![],
             layers: vec![],
             scales: vec![],
             facets: vec![],
             coordinates: CoordinateSystem::Cartesian,
-            theme: Theme {},
+            theme,
         }
     }
 
@@ -69,7 +69,7 @@ impl Blueprint {
         self
     }
 
-    pub fn with_theme(mut self, theme: Theme) -> Self {
+    pub fn with_theme(mut self, theme: &'a Theme) -> Self {
         self.theme = theme;
         self
     }
@@ -90,7 +90,8 @@ impl Blueprint {
             data = scale.transform(data);
         }
 
-        // Apply facet transforms at this stage, grouping elements by facet value.
+        // TODO: Apply facet transforms at this stage, grouping elements by facet value.
+
         let mut shapes: Vec<Box<dyn Shape>> = vec![];
         let mut layer_data_map = std::collections::HashMap::new();
         self.layers.iter().enumerate().for_each(|(i, layer)| {
@@ -115,6 +116,7 @@ impl Blueprint {
         // Render scales
         // Project position scales onto coordinate system
         // Assign window segments to subplots
+        // Window segment transforms
         Ok(shapes)
     }
 }
@@ -590,8 +592,16 @@ enum CoordinateSystem {
     Cartesian,
 }
 
-struct Theme {}
-impl Theme {}
+pub struct Theme {
+    pub window_margin: Unit,
+}
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            window_margin: Unit::Percent(25.),
+        }
+    }
+}
 
 /// Array data types that are either provided to a plot, or produced via a
 /// transformation.
@@ -622,6 +632,7 @@ impl PlotParameter {
                 .map(|u| match u {
                     Unit::NDC(v) => *v as f64,
                     Unit::Pixels(v) => *v as f64,
+                    Unit::Percent(v) => *v as f64,
                 })
                 .collect()),
         }

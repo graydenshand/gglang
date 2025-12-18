@@ -65,6 +65,32 @@ impl ContinuousNumericScale {
         }
     }
 
+    /// Reduce this scale on both sides by the specified margin
+    pub fn shrink(&self, margin: f64) -> Self {
+        assert!(margin > 0., "Margin: {margin}");
+        Self {
+            min: self.min + margin,
+            max: self.max - margin,
+        }
+    }
+
+    /// Expand this scale on both sides by the specified margin
+    pub fn expand(&self, margin: f64) -> Self {
+        assert!(margin > 0.);
+        Self {
+            min: self.min - margin,
+            max: self.max + margin,
+        }
+    }
+
+    /// Shift right by this amount
+    pub fn shift(&self, by: f64) -> Self {
+        Self {
+            min: self.min + by,
+            max: self.max + by,
+        }
+    }
+
     /// Produces a new scale with smallest min and largest max of the two and scales
     pub fn union(&self, other: &Self) -> Self {
         Self {
