@@ -1,1 +1,0 @@
-GEOM POINT { x=:year, y=:sales }

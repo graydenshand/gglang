@@ -112,11 +112,16 @@ impl<'a> Blueprint<'a> {
             shapes.append(&mut layer.geometry.render(layer_data, &self.scales));
         });
 
-        // Project shapes onto coordinate system
-        // Render scales
-        // Project position scales onto coordinate system
-        // Assign window segments to subplots
-        // Window segment transforms
+        //Render scales
+        for scale in &self.scales {
+            let mut scale_shapes = scale.render();
+            shapes.append(&mut scale_shapes);
+        }
+
+        // TODO: Project shapes onto coordinate system
+        // TODO: Project position scales onto coordinate system
+        // TODO: Assign window segments to subplots
+        // TODO: Window segment transforms
         Ok(shapes)
     }
 }
@@ -478,7 +483,7 @@ impl Scale for ScaleXContinuous {
             // place the center of the axis in the center of our window segment
             [
                 Unit::NDC(NDC_SCALE.midpoint() as f32),
-                Unit::NDC(NDC_SCALE.midpoint() as f32),
+                Unit::NDC(NDC_SCALE.min as f32),
             ],
             Unit::NDC(NDC_SCALE.span() as f32),
             Unit::Pixels(1), // fixed 1px line width
@@ -555,7 +560,7 @@ impl Scale for ScaleYContinuous {
         let xaxis = Rectangle::new(
             // place the center of the axis in the center of our window segment
             [
-                Unit::NDC(NDC_SCALE.midpoint() as f32),
+                Unit::NDC(NDC_SCALE.min as f32),
                 Unit::NDC(NDC_SCALE.midpoint() as f32),
             ],
             Unit::Pixels(1), // fixed 1px line width

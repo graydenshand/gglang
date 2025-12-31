@@ -1,2 +1,0 @@
-MAP :x TO x
-GEOM HISTOGRAM
