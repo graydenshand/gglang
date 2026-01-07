@@ -1,4 +1,4 @@
-use crate::shape::{Rectangle, Shape, Unit, WindowSegment};
+use crate::shape::{Element, Rectangle, Shape, Unit, WindowSegment};
 use crate::transform::{ContinuousNumericScale, NDC_SCALE};
 use std::any::Any;
 use std::collections::HashMap;
@@ -75,7 +75,7 @@ impl<'a> Blueprint<'a> {
     }
 
     /// Render a plot from this blueprint
-    pub fn render(&mut self, mut data: PlotData) -> Result<Vec<Box<dyn Shape>>, String> {
+    pub fn render(&mut self, mut data: PlotData) -> Result<Vec<Element>, String> {
         // Validate required mappings are satisfied for all geometries
         for g in self.layers.iter().map(|l| &l.geometry) {
             for aes in g.required_aesthetics() {
@@ -92,7 +92,7 @@ impl<'a> Blueprint<'a> {
 
         // TODO: Apply facet transforms at this stage, grouping elements by facet value.
 
-        let mut shapes: Vec<Box<dyn Shape>> = vec![];
+        let mut shapes: Vec<Element> = vec![];
         let mut layer_data_map = std::collections::HashMap::new();
         self.layers.iter().enumerate().for_each(|(i, layer)| {
             // Copy data, then run stat transforms
@@ -193,7 +193,7 @@ pub trait Geometry {
     ///
     /// Coordinates of the shapes are in data-space. These are later projected
     /// onto a coordinate system and translated into screen-space.
-    fn render(&self, data: &PlotData, sclaes: &Vec<Box<dyn Scale>>) -> Vec<Box<dyn Shape>>;
+    fn render(&self, data: &PlotData, sclaes: &Vec<Box<dyn Scale>>) -> Vec<Element>;
 
     /// The list of aesthetic families that may be used in this layer
     fn aesthetic_families(&self) -> Vec<Box<dyn AestheticFamily>> {
@@ -267,8 +267,8 @@ impl Geometry for GeomPoint {
         vec![Rc::new(AesX {}), Rc::new(AesY {})]
     }
 
-    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Box<dyn Shape>> {
-        let mut rectangles: Vec<Box<dyn Shape>> = vec![];
+    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element> {
+        let mut points = vec![];
         let x_scale = scales
             .iter()
             .find(|s| s.aesthetic_family().name() == "HorizontalPosition")
@@ -293,14 +293,15 @@ impl Geometry for GeomPoint {
         };
 
         for i in 0..x.len() {
-            rectangles.push(Box::new(Rectangle::new(
+            let r = Rectangle::new(
                 [x_mapped[i], y_mapped[i]],
                 Unit::Pixels(16),
                 Unit::Pixels(16),
                 [0.0, 0.0, 0.0],
-            )));
+            );
+            points.push(Element::Shape(Box::new(r)));
         }
-        rectangles
+        points
     }
 
     fn aesthetic_families(&self) -> Vec<Box<dyn AestheticFamily>> {
@@ -426,7 +427,7 @@ pub trait Scale: Any {
     fn fit(&mut self) -> Result<(), String>;
 
     /// Render the legend for this scale.
-    fn render(&self) -> Vec<Box<dyn Shape>>;
+    fn render(&self) -> Vec<Element>;
 
     /// Return the family this scale belongs to.
     ///
@@ -475,8 +476,8 @@ impl Scale for ScaleXContinuous {
     }
 
     /// Render x axis
-    fn render(&self) -> Vec<Box<dyn Shape>> {
-        let mut shapes: Vec<Box<dyn Shape>> = vec![];
+    fn render(&self) -> Vec<Element> {
+        let mut shapes = vec![];
 
         // draw primary line the full width of the allocated space
         let xaxis = Rectangle::new(
@@ -489,7 +490,7 @@ impl Scale for ScaleXContinuous {
             Unit::Pixels(1), // fixed 1px line width
             [0.0, 0.0, 0.0], // black
         );
-        shapes.push(Box::new(xaxis) as Box<dyn Shape>);
+        shapes.push(Element::Shape(Box::new(xaxis)));
 
         // Todo: add tickmarks and labels
         shapes
@@ -553,8 +554,8 @@ impl Scale for ScaleYContinuous {
     }
 
     /// Render y axis
-    fn render(&self) -> Vec<Box<dyn Shape>> {
-        let mut shapes: Vec<Box<dyn Shape>> = vec![];
+    fn render(&self) -> Vec<Element> {
+        let mut shapes: Vec<Element> = vec![];
 
         // draw primary line the full width of the allocated space
         let xaxis = Rectangle::new(
@@ -567,7 +568,7 @@ impl Scale for ScaleYContinuous {
             Unit::NDC(NDC_SCALE.span() as f32),
             [0.0, 0.0, 0.0], // black
         );
-        shapes.push(Box::new(xaxis) as Box<dyn Shape>);
+        shapes.push(Element::Shape(Box::new(xaxis)));
 
         // Todo: add tickmarks and labels
         shapes

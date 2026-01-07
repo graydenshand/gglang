@@ -1,13 +1,18 @@
-/// The window module owns the window, rendering loop, and base surface that all
-/// other graphical elements are arranged on.
+/// A Frame renders a BluePrint onto the App window
 use std::vec;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{plot, shape};
 
-use crate::shape::Vertex;
-use crate::transform;
+use crate::shape::{Element, Vertex};
+
+use wgpu_text::{
+    glyph_brush::{Section as TextSection, Text},
+    BrushBuilder, TextBrush,
+};
+
+use glyph_brush::ab_glyph::{Font, FontArc, FontRef, InvalidFont, Rect};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -23,13 +28,15 @@ impl Frame {
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         window: std::sync::Arc<Window>,
+        queue: &wgpu::Queue,
+        brush: &mut TextBrush<FontRef>,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
 
         // <hack msg="Demo purposes only, this will eventually be passed in">
@@ -57,19 +64,28 @@ impl Frame {
         // </hack>
 
         let mut window_segment = shape::WindowSegment::new_root(window.clone());
-        println!("{:?}", window_segment);
         window_segment = window_segment.with_margin(theme.window_margin);
-        println!("{:?}", window_segment);
 
         let mut vertices = vec![];
         let mut indices = vec![];
-        for shape in bp.render(plot_data).expect("Could render plot").iter() {
-            let base_index = vertices.len();
-            let shape_vertices = shape.vertices(&window_segment);
+        let mut text = vec![];
+        for element in bp.render(plot_data).expect("Could render plot").iter() {
+            match element {
+                Element::Shape(s) => {
+                    let base_index = vertices.len();
+                    let shape_vertices = s.vertices(&window_segment);
 
-            vertices.extend_from_slice(&shape_vertices);
-            indices.extend(shape.indices().iter().map(|idx| idx + base_index as u16));
+                    vertices.extend_from_slice(&shape_vertices);
+                    indices.extend(s.indices().iter().map(|idx| idx + base_index as u16));
+                }
+                Element::Text(t) => {
+                    // Buffer text elements for bulk queuing below
+                    text.push(t.clone());
+                }
+            }
         }
+        let text_sections: Vec<TextSection> = text.iter().map(|t| t.as_section()).collect();
+        brush.queue(device, queue, text_sections).unwrap();
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -105,7 +121,7 @@ impl Frame {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -119,6 +135,11 @@ impl Frame {
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
+
+        // Create some text for testing
+        let section = TextSection::default().add_text(Text::new("Hello World").with_scale(72.0));
+        brush.queue(device, queue, [&section]).unwrap();
+
         Self {
             vertex_buffer,
             index_buffer,
@@ -127,13 +148,18 @@ impl Frame {
         }
     }
 
-    pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+    pub fn render<'b>(
+        &'b self,
+        render_pass: &mut wgpu::RenderPass<'b>,
+        brush: &TextBrush<FontRef>,
+    ) {
         if self.vertex_buffer.size() == 0 {
             return;
         }
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16); // 1.
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        brush.draw(render_pass);
     }
 }

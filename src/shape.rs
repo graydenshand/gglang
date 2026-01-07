@@ -6,6 +6,9 @@ use crate::{
     plot::Scale,
     transform::{ContinuousNumericScale, NDC_SCALE},
 };
+
+use wgpu_text::glyph_brush::Section as TextSection;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
@@ -276,4 +279,24 @@ impl Shape for Rectangle {
     fn indices(&self) -> &[u16] {
         &[0, 1, 2, 0, 2, 3]
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Text {
+    value: String,
+    font_size: f32,
+    position: (Unit, Unit),
+}
+impl Text {
+    /// Return the text as a wgpu_text::glyph_brush::Section
+    pub fn as_section<'a>(&'a self) -> wgpu_text::glyph_brush::Section<'a> {
+        wgpu_text::glyph_brush::Section::default()
+            .add_text(wgpu_text::glyph_brush::Text::new(&self.value).with_scale(self.font_size))
+    }
+}
+
+/// An element can either be a Shape or a TextSection
+pub enum Element {
+    Shape(Box<dyn Shape>),
+    Text(Text),
 }

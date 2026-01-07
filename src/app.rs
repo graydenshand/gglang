@@ -1,8 +1,9 @@
-/// The window module owns the window, rendering loop, and base surface that all
+/// The app module owns the window, rendering loop, and base surface that all
 /// other graphical elements are arranged on.
 use std::{iter, sync::Arc, vec};
 
 use crate::frame::Frame;
+use glyph_brush::ab_glyph::FontRef;
 use winit::{
     application::ApplicationHandler,
     event::*,
@@ -11,10 +12,12 @@ use winit::{
     window::Window,
 };
 
+use wgpu_text::{BrushBuilder, TextBrush};
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-pub struct AppState {
+pub struct AppState<'a> {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -22,10 +25,11 @@ pub struct AppState {
     is_surface_configured: bool,
     window: Arc<Window>,
     frame: Option<Frame>,
+    brush: TextBrush<FontRef<'a>>,
 }
 
-impl AppState {
-    async fn new(window: Arc<Window>) -> anyhow::Result<AppState> {
+impl AppState<'_> {
+    async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -87,6 +91,14 @@ impl AppState {
             view_formats: vec![],
         };
 
+        let font = include_bytes!("fonts/OpenSans-Regular.ttf");
+        let brush = BrushBuilder::using_font_bytes(font).unwrap().build(
+            &device,
+            config.width,
+            config.height,
+            config.format,
+        );
+
         Ok(Self {
             surface,
             device,
@@ -95,6 +107,7 @@ impl AppState {
             is_surface_configured: false,
             window,
             frame: None,
+            brush: brush,
         })
     }
 
@@ -104,12 +117,23 @@ impl AppState {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
+            self.brush.resize_view(
+                self.config.width as f32,
+                self.config.height as f32,
+                &self.queue,
+            );
             self.update() // update on resize
         }
     }
 
     fn update(&mut self) {
-        let frame = Frame::new(&self.device, &self.config, self.window.clone());
+        let frame = Frame::new(
+            &self.device,
+            &self.config,
+            self.window.clone(),
+            &self.queue,
+            &mut self.brush,
+        );
         self.frame = Some(frame);
     }
 
@@ -152,11 +176,15 @@ impl AppState {
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
+                multiview_mask: None,
             });
 
+            // Render the frame
             if let Some(frame) = &mut self.frame {
-                frame.render(&mut render_pass);
+                frame.render(&mut render_pass, &self.brush);
             }
+
+            self.brush.draw(&mut render_pass);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -175,12 +203,12 @@ impl AppState {
 
 pub struct App {
     #[cfg(target_arch = "wasm32")]
-    proxy: Option<winit::event_loop::EventLoopProxy<AppState>>,
-    state: Option<AppState>,
+    proxy: Option<winit::event_loop::EventLoopProxy<AppState<'static>>>,
+    state: Option<AppState<'static>>,
 }
 
 impl App {
-    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<AppState>) -> Self {
+    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<AppState<'static>>) -> Self {
         #[cfg(target_arch = "wasm32")]
         let proxy = Some(event_loop.create_proxy());
         Self {
@@ -191,7 +219,7 @@ impl App {
     }
 }
 
-impl ApplicationHandler<AppState> for App {
+impl ApplicationHandler<AppState<'static>> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         #[allow(unused_mut)]
         let mut window_attributes = Window::default_attributes();
@@ -223,7 +251,7 @@ impl ApplicationHandler<AppState> for App {
                 wasm_bindgen_futures::spawn_local(async move {
                     assert!(proxy
                         .send_event(
-                            State::new(window)
+                            AppState::new(window)
                                 .await
                                 .expect("Unable to create canvas!!!")
                         )
@@ -234,7 +262,7 @@ impl ApplicationHandler<AppState> for App {
     }
 
     #[allow(unused_mut)]
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: AppState) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: AppState<'static>) {
         #[cfg(target_arch = "wasm32")]
         {
             event.window.request_redraw();
