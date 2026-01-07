@@ -1,4 +1,4 @@
-use crate::shape::{Element, Rectangle, Shape, Unit, WindowSegment};
+use crate::shape::{Element, Rectangle, Unit};
 use crate::transform::{ContinuousNumericScale, NDC_SCALE};
 use std::any::Any;
 use std::collections::HashMap;

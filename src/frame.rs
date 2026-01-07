@@ -8,11 +8,10 @@ use crate::{plot, shape};
 use crate::shape::{Element, Vertex};
 
 use wgpu_text::{
-    glyph_brush::{Section as TextSection, Text},
-    BrushBuilder, TextBrush,
+    glyph_brush::{Section as TextSection, Text}, TextBrush,
 };
 
-use glyph_brush::ab_glyph::{Font, FontArc, FontRef, InvalidFont, Rect};
+use glyph_brush::ab_glyph::FontRef;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

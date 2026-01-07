@@ -2,12 +2,8 @@
 use wasm_bindgen::prelude::*;
 use winit::window::Window;
 
-use crate::{
-    plot::Scale,
-    transform::{ContinuousNumericScale, NDC_SCALE},
-};
+use crate::transform::{ContinuousNumericScale, NDC_SCALE};
 
-use wgpu_text::glyph_brush::Section as TextSection;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -129,7 +125,7 @@ impl WindowSegment {
             Unit::Pixels(v) => self
                 .pixel_scale_x
                 .map_position(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Percent(v) => todo!("support percents"),
+            Unit::Percent(_v) => todo!("support percents"),
         }
     }
 
@@ -138,7 +134,7 @@ impl WindowSegment {
         match x {
             Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_x, *v as f64) as f32,
             Unit::Pixels(v) => self.pixel_scale_x.map_size(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Percent(v) => todo!("support percents"),
+            Unit::Percent(_v) => todo!("support percents"),
         }
     }
 
@@ -149,7 +145,7 @@ impl WindowSegment {
             Unit::Pixels(v) => self
                 .pixel_scale_y
                 .map_position(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Percent(v) => todo!("support percents"),
+            Unit::Percent(_v) => todo!("support percents"),
         }
     }
 
@@ -158,7 +154,7 @@ impl WindowSegment {
         match y {
             Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_y, *v as f64) as f32,
             Unit::Pixels(v) => self.pixel_scale_y.map_size(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Percent(v) => todo!("support percents"),
+            Unit::Percent(_v) => todo!("support percents"),
         }
     }
 
