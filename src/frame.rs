@@ -8,7 +8,8 @@ use crate::{plot, shape};
 use crate::shape::{Element, Vertex};
 
 use wgpu_text::{
-    glyph_brush::{Section as TextSection, Text}, TextBrush,
+    glyph_brush::{Section as TextSection, Text},
+    TextBrush,
 };
 
 use glyph_brush::ab_glyph::FontRef;
@@ -54,11 +55,11 @@ impl Frame {
         let mut plot_data = plot::PlotData::new();
         plot_data.insert(
             "x".into(),
-            plot::PlotParameter::FloatArray(vec![0.0, 0.5, 1.0]),
+            plot::PlotParameter::FloatArray(vec![0.0, 0.5, 1.0, 3.5]),
         );
         plot_data.insert(
             "y".into(),
-            plot::PlotParameter::FloatArray(vec![2.0, 0.0, 2.0]),
+            plot::PlotParameter::FloatArray(vec![2.0, 0.0, 2.0, 9.]),
         );
         // </hack>
 
@@ -78,12 +79,12 @@ impl Frame {
                     indices.extend(s.indices().iter().map(|idx| idx + base_index as u16));
                 }
                 Element::Text(t) => {
-                    // Buffer text elements for bulk queuing below
                     text.push(t.clone());
                 }
             }
         }
-        let text_sections: Vec<TextSection> = text.iter().map(|t| t.as_section()).collect();
+        let text_sections: Vec<TextSection> =
+            text.iter().map(|t| t.as_section(&window_segment)).collect();
         brush.queue(device, queue, text_sections).unwrap();
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -134,10 +135,6 @@ impl Frame {
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-
-        // Create some text for testing
-        let section = TextSection::default().add_text(Text::new("Hello World").with_scale(72.0));
-        brush.queue(device, queue, [&section]).unwrap();
 
         Self {
             vertex_buffer,

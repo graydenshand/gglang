@@ -1,9 +1,8 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use winit::window::Window;
+use winit::window::{self, Window};
 
-use crate::transform::{ContinuousNumericScale, NDC_SCALE};
-
+use crate::transform::{ContinuousNumericScale, NDC_SCALE, PERCENT_SCALE};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -125,7 +124,7 @@ impl WindowSegment {
             Unit::Pixels(v) => self
                 .pixel_scale_x
                 .map_position(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Percent(_v) => todo!("support percents"),
+            Unit::Percent(v) => PERCENT_SCALE.map_position(&self.ndc_scale_x, *v as f64) as f32,
         }
     }
 
@@ -134,7 +133,7 @@ impl WindowSegment {
         match x {
             Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_x, *v as f64) as f32,
             Unit::Pixels(v) => self.pixel_scale_x.map_size(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Percent(_v) => todo!("support percents"),
+            Unit::Percent(v) => PERCENT_SCALE.map_size(&self.ndc_scale_x, *v as f64) as f32,
         }
     }
 
@@ -145,7 +144,7 @@ impl WindowSegment {
             Unit::Pixels(v) => self
                 .pixel_scale_y
                 .map_position(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Percent(_v) => todo!("support percents"),
+            Unit::Percent(v) => PERCENT_SCALE.map_position(&self.ndc_scale_y, *v as f64) as f32,
         }
     }
 
@@ -154,7 +153,7 @@ impl WindowSegment {
         match y {
             Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_y, *v as f64) as f32,
             Unit::Pixels(v) => self.pixel_scale_y.map_size(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Percent(_v) => todo!("support percents"),
+            Unit::Percent(v) => PERCENT_SCALE.map_size(&self.ndc_scale_y, *v as f64) as f32,
         }
     }
 
@@ -166,6 +165,7 @@ impl WindowSegment {
         // Convert margin to NDC and pixel units for both axes
         let margin_ndc_x = margin.as_ndc(self.pixel_scale_x.span() as u32);
         let margin_ndc_y = margin.as_ndc(self.pixel_scale_y.span() as u32);
+
         let margin_pixels_x = margin_ndc_x.as_px(self.pixel_scale_x.span() as u32);
         let margin_pixels_y = margin_ndc_y.as_px(self.pixel_scale_y.span() as u32);
 
@@ -284,10 +284,45 @@ pub struct Text {
     position: (Unit, Unit),
 }
 impl Text {
+    pub fn new(value: String, font_size: f32, position: (Unit, Unit)) -> Self {
+        Self {
+            value,
+            font_size,
+            position,
+        }
+    }
+
     /// Return the text as a wgpu_text::glyph_brush::Section
-    pub fn as_section<'a>(&'a self) -> wgpu_text::glyph_brush::Section<'a> {
+    pub fn as_section<'a>(
+        &'a self,
+        window_segment: &WindowSegment,
+    ) -> wgpu_text::glyph_brush::Section<'a> {
+        println!("position: {:?}", (self.position_as_pixels(window_segment)));
         wgpu_text::glyph_brush::Section::default()
+            .with_screen_position(self.position_as_pixels(window_segment))
             .add_text(wgpu_text::glyph_brush::Text::new(&self.value).with_scale(self.font_size))
+    }
+
+    fn position_as_pixels(&self, window_segment: &WindowSegment) -> (f32, f32) {
+        // x position in ndc coords
+        let x_ndc = window_segment.abs_x(&self.position.0);
+
+        // convert to px
+        let x = window_segment
+            .ndc_scale_x
+            .map_position(&window_segment.pixel_scale_x, x_ndc.into());
+
+        println!("x: {}", x);
+
+        // y position in ndc coords
+        let y_ndc = window_segment.abs_y(&self.position.1);
+
+        // convert to py
+        let y = window_segment
+            .ndc_scale_y
+            .map_position(&window_segment.pixel_scale_y, y_ndc.into());
+
+        (x as f32, y as f32)
     }
 }
 

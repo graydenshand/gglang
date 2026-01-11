@@ -101,6 +101,7 @@ impl ContinuousNumericScale {
 }
 
 pub const NDC_SCALE: ContinuousNumericScale = ContinuousNumericScale { min: -1., max: 1. };
+pub const PERCENT_SCALE: ContinuousNumericScale = ContinuousNumericScale { min: 0., max: 100. };
 
 #[cfg(test)]
 mod tests {

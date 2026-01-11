@@ -1,4 +1,4 @@
-use crate::shape::{Element, Rectangle, Unit};
+use crate::shape::{Element, Rectangle, Text, Unit};
 use crate::transform::{ContinuousNumericScale, NDC_SCALE};
 use std::any::Any;
 use std::collections::HashMap;
@@ -477,7 +477,7 @@ impl Scale for ScaleXContinuous {
 
     /// Render x axis
     fn render(&self) -> Vec<Element> {
-        let mut shapes = vec![];
+        let mut elements = vec![];
 
         // draw primary line the full width of the allocated space
         let xaxis = Rectangle::new(
@@ -490,10 +490,20 @@ impl Scale for ScaleXContinuous {
             Unit::Pixels(1), // fixed 1px line width
             [0.0, 0.0, 0.0], // black
         );
-        shapes.push(Element::Shape(Box::new(xaxis)));
+        elements.push(Element::Shape(Box::new(xaxis)));
+
+        // Add label for the max value
+        let s = &self.data_scale.expect("Scale isn't fit");
+        let value = s.max as i64;
+        let pos = s.map_position(&NDC_SCALE, value as f64);
+        elements.push(Element::Text(Text::new(
+            format!("{}", value),
+            48.0,
+            (Unit::NDC(pos as f32), Unit::Percent(99.)),
+        )));
 
         // Todo: add tickmarks and labels
-        shapes
+        elements
     }
 
     /// The aesthetic family fo the scale
@@ -555,7 +565,7 @@ impl Scale for ScaleYContinuous {
 
     /// Render y axis
     fn render(&self) -> Vec<Element> {
-        let mut shapes: Vec<Element> = vec![];
+        let mut elements: Vec<Element> = vec![];
 
         // draw primary line the full width of the allocated space
         let xaxis = Rectangle::new(
@@ -568,10 +578,19 @@ impl Scale for ScaleYContinuous {
             Unit::NDC(NDC_SCALE.span() as f32),
             [0.0, 0.0, 0.0], // black
         );
-        shapes.push(Element::Shape(Box::new(xaxis)));
+        elements.push(Element::Shape(Box::new(xaxis)));
+
+        let s = &self.data_scale.expect("Scale isn't fit");
+        let value = s.max as i64;
+        let pos = s.map_position(&NDC_SCALE, value as f64);
+        elements.push(Element::Text(Text::new(
+            format!("{}", value),
+            48.0,
+            (Unit::Percent(0.), Unit::Percent(pos as f32)),
+        )));
 
         // Todo: add tickmarks and labels
-        shapes
+        elements
     }
 
     /// The aesthetic family fo the scale
