@@ -1,2 +1,3 @@
-MAP :x TO x, :y TO y
+MAP x=:x, y=:y
 GEOM POINT
+TITLE "Scatter Plot"

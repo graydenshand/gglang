@@ -1,58 +1,43 @@
 // Grammar of Graphics Language - Pest Grammar
 
-// Main Program Structure  
+// Main Program Structure
 program = { SOI ~ statement* ~ EOI }
 
-statement = { 
-    title_statement | 
-    facet_statement | 
-    map_statement | 
-    geom_statement | 
-    scale_statement | 
-    coord_statement | 
-    theme_property_statement 
+statement = {
+    map_statement |
+    geom_statement |
+    title_statement |
+    xlabel_statement |
+    ylabel_statement |
+    caption_statement
 }
 
 // Title Statement
 title_statement = { "TITLE" ~ string_literal }
 
-// Facet Statement  
-facet_statement = { "FACET" ~ "USING" ~ data_reference ~ ("WITH" ~ number ~ "COLUMNS")? }
+// Caption Statement
+caption_statement = { "CAPTION" ~ string_literal }
+
+// X Axis Label Statement
+xlabel_statement = { "XLABEL" ~ string_literal }
+
+// Y Axis Label Statement
+ylabel_statement = { "YLABEL" ~ string_literal }
 
 // Map Statement (replaces DATA element)
 map_statement = { "MAP" ~ data_mappings }
 data_mappings = { data_mapping ~ ("," ~ data_mapping)* }
-data_mapping = { data_reference ~ "TO" ~ aesthetic }
-aesthetic = { "x" | "y" | "color" | "size" | "shape" | "alpha" | "fill" }
+data_mapping = { aesthetic ~ "=" ~ data_reference }
+aesthetic = { "x" | "y" }
 data_reference = { ":" ~ identifier }
 
-// Geometry Statement (flattened, can have modifiers)
-geom_statement = { "GEOM" ~ geometry_type ~ geometry_modifier* }
-geometry_type = { "POINT" | "LINE" | "BAR" | "AREA" | "HISTOGRAM" | "BOXPLOT" | "VIOLIN" | "SMOOTH" | "TEXT" }
-geometry_modifier = { "LINEAR" | "LOESS" | "GLM" | "GAM" | "LM" | "POLYNOMIAL" }
-
-// Scale Statement
-scale_statement = { "SCALE" ~ scale_type }
-scale_type = { "X_CONTINUOUS" | "Y_CONTINUOUS" | "X_DISCRETE" | "Y_DISCRETE" | "COLOR_CONTINUOUS" | "COLOR_DISCRETE" | "SIZE_CONTINUOUS" | "SIZE_DISCRETE" }
-
-// Coordinates Statement
-coord_statement = { "COORD" ~ coordinate_system }
-coordinate_system = { "CARTESIAN" | "POLAR" | "MAP" | "FIXED" }
-
-// Theme Property Statements (flattened)
-theme_property_statement = { theme_property ~ theme_value }
-theme_property = { "BG_COLOR" | "TEXT_COLOR" | "GRID_COLOR" | "AXIS_COLOR" | "FONT_SIZE" | "FONT_FAMILY" | "MARGIN_TOP" | "MARGIN_BOTTOM" | "MARGIN_LEFT" | "MARGIN_RIGHT" | "LEGEND_POSITION" }
-theme_value = { color_value | number | string_literal | boolean_value }
+// Geometry Statement
+geom_statement = { "GEOM" ~ geometry_type }
+geometry_type = { "POINT" }
 
 // Basic Data Types
 string_literal = @{ "\"" ~ string_character* ~ "\"" }
 string_character = { !("\"") ~ ANY }
-
-color_value = { hex_color | named_color }
-hex_color = @{ "#" ~ ASCII_HEX_DIGIT{6} }
-named_color = { "red" | "blue" | "green" | "black" | "white" | "gray" | "yellow" | "orange" | "purple" }
-
-boolean_value = { "true" | "false" }
 
 number = @{ "-"? ~ (decimal | integer) }
 integer = @{ ASCII_DIGIT+ }

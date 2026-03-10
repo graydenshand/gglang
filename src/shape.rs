@@ -277,11 +277,19 @@ impl Shape for Rectangle {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub enum HAlign {
+    #[default]
+    Left,
+    Center,
+}
+
 #[derive(Clone, Debug)]
 pub struct Text {
     value: String,
     font_size: f32,
     position: (Unit, Unit),
+    h_align: HAlign,
 }
 impl Text {
     pub fn new(value: String, font_size: f32, position: (Unit, Unit)) -> Self {
@@ -289,6 +297,16 @@ impl Text {
             value,
             font_size,
             position,
+            h_align: HAlign::Left,
+        }
+    }
+
+    pub fn centered(value: String, font_size: f32, position: (Unit, Unit)) -> Self {
+        Self {
+            value,
+            font_size,
+            position,
+            h_align: HAlign::Center,
         }
     }
 
@@ -297,9 +315,15 @@ impl Text {
         &'a self,
         window_segment: &WindowSegment,
     ) -> wgpu_text::glyph_brush::Section<'a> {
-        println!("position: {:?}", (self.position_as_pixels(window_segment)));
+        let h_align = match self.h_align {
+            HAlign::Left => wgpu_text::glyph_brush::HorizontalAlign::Left,
+            HAlign::Center => wgpu_text::glyph_brush::HorizontalAlign::Center,
+        };
         wgpu_text::glyph_brush::Section::default()
             .with_screen_position(self.position_as_pixels(window_segment))
+            .with_layout(
+                wgpu_text::glyph_brush::Layout::default_single_line().h_align(h_align),
+            )
             .add_text(wgpu_text::glyph_brush::Text::new(&self.value).with_scale(self.font_size))
     }
 
@@ -312,15 +336,17 @@ impl Text {
             .ndc_scale_x
             .map_position(&window_segment.pixel_scale_x, x_ndc.into());
 
-        println!("x: {}", x);
-
         // y position in ndc coords
         let y_ndc = window_segment.abs_y(&self.position.1);
 
-        // convert to py
+        // convert to px (flip y: NDC y+ is up, but screen y+ is down)
+        let flipped_pixel_y = ContinuousNumericScale {
+            min: window_segment.pixel_scale_y.max,
+            max: window_segment.pixel_scale_y.min,
+        };
         let y = window_segment
             .ndc_scale_y
-            .map_position(&window_segment.pixel_scale_y, y_ndc.into());
+            .map_position(&flipped_pixel_y, y_ndc.into());
 
         (x as f32, y as f32)
     }

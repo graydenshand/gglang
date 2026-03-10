@@ -1,7 +1,7 @@
 # Default mappings
 
 ```jsx
-MAP { x=:year, y=:sales }
+MAP x=:year, y=:sales
 ```
 
 This statement maps the plot parameter year to the x aesthetic, and parameter sales to the y aesthetic. These mappings apply to all layers of the plot unless overridden explicitly by an individual layer.

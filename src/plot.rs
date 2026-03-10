@@ -30,6 +30,18 @@ pub struct Blueprint<'a> {
 
     /// Theme settings
     theme: &'a Theme,
+
+    /// Optional plot title
+    pub title: Option<String>,
+
+    /// Optional plot caption
+    pub caption: Option<String>,
+
+    /// Optional x-axis label (defaults to mapped column name)
+    pub x_label: Option<String>,
+
+    /// Optional y-axis label (defaults to mapped column name)
+    pub y_label: Option<String>,
 }
 impl<'a> Blueprint<'a> {
     /// Create a new, empty blueprint
@@ -41,6 +53,10 @@ impl<'a> Blueprint<'a> {
             facets: vec![],
             coordinates: CoordinateSystem::Cartesian,
             theme,
+            title: None,
+            caption: None,
+            x_label: None,
+            y_label: None,
         }
     }
 
@@ -71,6 +87,26 @@ impl<'a> Blueprint<'a> {
 
     pub fn with_theme(mut self, theme: &'a Theme) -> Self {
         self.theme = theme;
+        self
+    }
+
+    pub fn with_title(mut self, title: String) -> Self {
+        self.title = Some(title);
+        self
+    }
+
+    pub fn with_caption(mut self, caption: String) -> Self {
+        self.caption = Some(caption);
+        self
+    }
+
+    pub fn with_x_label(mut self, label: String) -> Self {
+        self.x_label = Some(label);
+        self
+    }
+
+    pub fn with_y_label(mut self, label: String) -> Self {
+        self.y_label = Some(label);
         self
     }
 
@@ -132,6 +168,50 @@ impl<'a> Blueprint<'a> {
         for scale in &self.scales {
             let mut scale_shapes = scale.render();
             shapes.append(&mut scale_shapes);
+        }
+
+        // Derive default axis labels from mapping column names
+        let x_label = self.x_label.clone().or_else(|| {
+            self.mappings.iter().find_map(|m| match m {
+                Mapping::X(col) => Some(col.clone()),
+                _ => None,
+            })
+        });
+        let y_label = self.y_label.clone().or_else(|| {
+            self.mappings.iter().find_map(|m| match m {
+                Mapping::Y(col) => Some(col.clone()),
+                _ => None,
+            })
+        });
+
+        // Emit label elements
+        if let Some(title) = &self.title {
+            shapes.push(Element::Text(Text::centered(
+                title.clone(),
+                32.0,
+                (Unit::NDC(0.0), Unit::NDC(1.2)),
+            )));
+        }
+        if let Some(label) = x_label {
+            shapes.push(Element::Text(Text::centered(
+                label,
+                24.0,
+                (Unit::NDC(0.0), Unit::NDC(-1.2)),
+            )));
+        }
+        if let Some(label) = y_label {
+            shapes.push(Element::Text(Text::new(
+                label,
+                24.0,
+                (Unit::NDC(-1.3), Unit::NDC(0.0)),
+            )));
+        }
+        if let Some(caption) = &self.caption {
+            shapes.push(Element::Text(Text::centered(
+                caption.clone(),
+                20.0,
+                (Unit::NDC(0.0), Unit::NDC(-1.35)),
+            )));
         }
 
         // TODO: Project shapes onto coordinate system
@@ -529,7 +609,7 @@ impl Scale for ScaleXContinuous {
             elements.push(Element::Text(Text::new(
                 label,
                 24.0,
-                (Unit::NDC(x_ndc), Unit::Percent(99.)),
+                (Unit::NDC(x_ndc), Unit::NDC(-1.08)),
             )));
         }
 
@@ -631,7 +711,7 @@ impl Scale for ScaleYContinuous {
             elements.push(Element::Text(Text::new(
                 label,
                 24.0,
-                (Unit::NDC(-1.2), Unit::NDC(y_ndc)),
+                (Unit::NDC(-1.08), Unit::NDC(y_ndc)),
             )));
         }
 

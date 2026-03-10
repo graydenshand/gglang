@@ -37,6 +37,10 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                     ));
                 }
             },
+            Statement::Title(s) => bp = bp.with_title(s.clone()),
+            Statement::Caption(s) => bp = bp.with_caption(s.clone()),
+            Statement::XLabel(s) => bp = bp.with_x_label(s.clone()),
+            Statement::YLabel(s) => bp = bp.with_y_label(s.clone()),
         }
     }
 
