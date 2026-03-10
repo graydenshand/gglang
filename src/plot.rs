@@ -493,6 +493,7 @@ impl Scale for ScaleXContinuous {
         elements.push(Element::Shape(Box::new(xaxis)));
 
         // Add label for the max value
+        // todo!("Dynamically add labels for axis");
         let s = &self.data_scale.expect("Scale isn't fit");
         let value = s.max as i64;
         let pos = s.map_position(&NDC_SCALE, value as f64);
