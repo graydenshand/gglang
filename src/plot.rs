@@ -1,5 +1,5 @@
 use crate::shape::{Element, Rectangle, Text, Unit};
-use crate::transform::{ContinuousNumericScale, NDC_SCALE};
+use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -74,8 +74,24 @@ impl<'a> Blueprint<'a> {
         self
     }
 
-    /// Render a plot from this blueprint
-    pub fn render(&mut self, mut data: PlotData) -> Result<Vec<Element>, String> {
+    /// Render a plot from this blueprint.
+    ///
+    /// Data is provided with raw column names; the blueprint's mappings are
+    /// applied to bind columns to aesthetic channels before rendering.
+    pub fn render(&mut self, raw_data: PlotData) -> Result<Vec<Element>, String> {
+        // Apply mappings: raw column names → aesthetic channel names
+        let mut data = PlotData::new();
+        for mapping in &self.mappings {
+            let (col, aes_name) = match mapping {
+                Mapping::X(col) => (col.as_str(), "x"),
+                Mapping::Y(col) => (col.as_str(), "y"),
+            };
+            let param = raw_data
+                .get(col)
+                .ok_or_else(|| format!("Column '{}' not found in data", col))?;
+            data.insert(aes_name.to_string(), param.clone());
+        }
+
         // Validate required mappings are satisfied for all geometries
         for g in self.layers.iter().map(|l| &l.geometry) {
             for aes in g.required_aesthetics() {
@@ -212,7 +228,7 @@ pub trait Geometry {
             .iter()
             .chain(self.extra_aesthetics().iter())
         {
-            if let Some(param) = data.data.get(aes.name()) {
+            if let Some(param) = data.get(aes.name()) {
                 mapped_data.push((aes.clone(), param.clone()));
             }
         }
@@ -249,7 +265,7 @@ pub trait Geometry {
             let scale = family_scale_map
                 .get_mut(aes.aesthetic_family().name())
                 .expect("scale exists in map");
-            scale.append(values);
+            scale.append(values).expect("scale append failed");
         }
     }
 }
@@ -274,9 +290,8 @@ impl Geometry for GeomPoint {
             .find(|s| s.aesthetic_family().name() == "HorizontalPosition")
             .unwrap();
         let x = data
-            .data
             .get("x")
-            .expect("key existance was already validated");
+            .expect("key existence was already validated");
         let x_mapped = match x_scale.map(x).expect("scales were fit to data") {
             PlotParameter::UnitArray(v) => v,
             _ => panic!("expected unit array from position scale"),
@@ -286,7 +301,7 @@ impl Geometry for GeomPoint {
             .iter()
             .find(|s| s.aesthetic_family().name() == "VerticalPosition")
             .unwrap();
-        let y = data.data.get("y").expect("already validated");
+        let y = data.get("y").expect("already validated");
         let y_mapped = match y_scale.map(y).expect("scales were fit to data") {
             PlotParameter::UnitArray(v) => v,
             _ => panic!("expected unit array from position scale"),
@@ -330,6 +345,7 @@ impl PositionAdjustment for IdentityTransform {}
 pub trait PositionAdjustment {}
 
 // Stores the mapping of a visual channel to a column
+#[derive(Clone)]
 pub enum Mapping {
     X(String),
     Y(String),
@@ -481,29 +497,42 @@ impl Scale for ScaleXContinuous {
 
         // draw primary line the full width of the allocated space
         let xaxis = Rectangle::new(
-            // place the center of the axis in the center of our window segment
             [
                 Unit::NDC(NDC_SCALE.midpoint() as f32),
                 Unit::NDC(NDC_SCALE.min as f32),
             ],
             Unit::NDC(NDC_SCALE.span() as f32),
-            Unit::Pixels(1), // fixed 1px line width
-            [0.0, 0.0, 0.0], // black
+            Unit::Pixels(1),
+            [0.0, 0.0, 0.0],
         );
         elements.push(Element::Shape(Box::new(xaxis)));
 
-        // Add label for the max value
-        // todo!("Dynamically add labels for axis");
         let s = &self.data_scale.expect("Scale isn't fit");
-        let value = s.max as i64;
-        let pos = s.map_position(&NDC_SCALE, value as f64);
-        elements.push(Element::Text(Text::new(
-            format!("{}", value),
-            48.0,
-            (Unit::NDC(pos as f32), Unit::Percent(99.)),
-        )));
+        for tick_value in nice_ticks(s.min, s.max, 5) {
+            let x_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
 
-        // Todo: add tickmarks and labels
+            // tick mark: 1px wide, 6px tall
+            let tick = Rectangle::new(
+                [Unit::NDC(x_ndc), Unit::NDC(NDC_SCALE.min as f32)],
+                Unit::Pixels(1),
+                Unit::Pixels(6),
+                [0.0, 0.0, 0.0],
+            );
+            elements.push(Element::Shape(Box::new(tick)));
+
+            // label below tick
+            let label = if tick_value.fract() == 0.0 {
+                format!("{}", tick_value as i64)
+            } else {
+                format!("{:.1}", tick_value)
+            };
+            elements.push(Element::Text(Text::new(
+                label,
+                24.0,
+                (Unit::NDC(x_ndc), Unit::Percent(99.)),
+            )));
+        }
+
         elements
     }
 
@@ -528,9 +557,9 @@ impl Scale for ScaleXContinuous {
 
 /// ScaleYContinuous is a positional scale.
 ///
-/// It maps data points to horizontal positions over a portion of the screen.
+/// It maps data points to vertical positions over a portion of the screen.
 pub struct ScaleYContinuous {
-    /// The scale of the xaxis in data units
+    /// The scale of the y-axis in data units
     data_scale: Option<ContinuousNumericScale>,
 }
 impl ScaleYContinuous {
@@ -568,29 +597,44 @@ impl Scale for ScaleYContinuous {
     fn render(&self) -> Vec<Element> {
         let mut elements: Vec<Element> = vec![];
 
-        // draw primary line the full width of the allocated space
-        let xaxis = Rectangle::new(
-            // place the center of the axis in the center of our window segment
+        // draw primary line the full height of the allocated space
+        let yaxis = Rectangle::new(
             [
                 Unit::NDC(NDC_SCALE.min as f32),
                 Unit::NDC(NDC_SCALE.midpoint() as f32),
             ],
-            Unit::Pixels(1), // fixed 1px line width
+            Unit::Pixels(1),
             Unit::NDC(NDC_SCALE.span() as f32),
-            [0.0, 0.0, 0.0], // black
+            [0.0, 0.0, 0.0],
         );
-        elements.push(Element::Shape(Box::new(xaxis)));
+        elements.push(Element::Shape(Box::new(yaxis)));
 
         let s = &self.data_scale.expect("Scale isn't fit");
-        let value = s.max as i64;
-        let pos = s.map_position(&NDC_SCALE, value as f64);
-        elements.push(Element::Text(Text::new(
-            format!("{}", value),
-            48.0,
-            (Unit::Percent(0.), Unit::Percent(pos as f32)),
-        )));
+        for tick_value in nice_ticks(s.min, s.max, 5) {
+            let y_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
 
-        // Todo: add tickmarks and labels
+            // tick mark: 6px wide, 1px tall
+            let tick = Rectangle::new(
+                [Unit::NDC(NDC_SCALE.min as f32), Unit::NDC(y_ndc)],
+                Unit::Pixels(6),
+                Unit::Pixels(1),
+                [0.0, 0.0, 0.0],
+            );
+            elements.push(Element::Shape(Box::new(tick)));
+
+            // label to the left of tick, positioned in the margin
+            let label = if tick_value.fract() == 0.0 {
+                format!("{}", tick_value as i64)
+            } else {
+                format!("{:.1}", tick_value)
+            };
+            elements.push(Element::Text(Text::new(
+                label,
+                24.0,
+                (Unit::NDC(-1.2), Unit::NDC(y_ndc)),
+            )));
+        }
+
         elements
     }
 
@@ -684,6 +728,10 @@ impl PlotData {
     pub fn insert(&mut self, key: String, value: PlotParameter) {
         self.data.insert(key, value);
     }
+
+    pub fn get(&self, key: &str) -> Option<&PlotParameter> {
+        self.data.get(key)
+    }
 }
 
 /// For a layer, MappedData is parsed to specific aesthetics for a plot
@@ -702,22 +750,16 @@ mod test {
 
     #[test]
     fn create_blueprint() {
+        let theme = Theme::default();
         let layer = Layer::new(
             Box::new(GeomPoint {}),
             vec![Mapping::X("x".into()), Mapping::Y("y".into())],
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let bp = Blueprint {
-            mappings: vec![],
-            layers: vec![layer],
-            scales: vec![
-                Box::new(ScaleXContinuous::new()),
-                Box::new(ScaleYContinuous::new()),
-            ],
-            facets: vec![],
-            coordinates: CoordinateSystem::Cartesian,
-            theme: Theme {},
-        };
+        let _bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_scale(Box::new(ScaleXContinuous::new()))
+            .with_scale(Box::new(ScaleYContinuous::new()));
     }
 }

@@ -40,7 +40,7 @@ Even better, if you provide variables named according to channels (e.g. `x` and 
 GEOM POINT
 ```
 
-Scatter with colored lines for each group
+Scatter with colored lines for each group 
 
 ```jsx
 MAP :year TO x, :sales TO y

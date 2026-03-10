@@ -30,6 +30,8 @@ impl Frame {
         window: std::sync::Arc<Window>,
         queue: &wgpu::Queue,
         brush: &mut TextBrush<FontRef>,
+        elements: &[Element],
+        theme: &plot::Theme,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let render_pipeline_layout =
@@ -39,37 +41,13 @@ impl Frame {
                 immediate_size: 0,
             });
 
-        // <hack msg="Demo purposes only, this will eventually be passed in">
-        let layer = plot::Layer::new(
-            Box::new(plot::GeomPoint {}),
-            vec![plot::Mapping::X("x".into()), plot::Mapping::Y("y".into())],
-            Box::new(plot::IdentityTransform {}),
-            Box::new(plot::IdentityTransform {}),
-        );
-        let theme = plot::Theme::default();
-        let mut bp = plot::Blueprint::new(&theme)
-            .with_layer(layer)
-            .with_scale(Box::new(plot::ScaleXContinuous::new()))
-            .with_scale(Box::new(plot::ScaleYContinuous::new()));
-
-        let mut plot_data = plot::PlotData::new();
-        plot_data.insert(
-            "x".into(),
-            plot::PlotParameter::FloatArray(vec![0.0, 0.5, 1.0, 3.5]),
-        );
-        plot_data.insert(
-            "y".into(),
-            plot::PlotParameter::FloatArray(vec![2.0, 0.0, 2.0, 9.]),
-        );
-        // </hack>
-
         let mut window_segment = shape::WindowSegment::new_root(window.clone());
         window_segment = window_segment.with_margin(theme.window_margin);
 
         let mut vertices = vec![];
         let mut indices = vec![];
         let mut text = vec![];
-        for element in bp.render(plot_data).expect("Could render plot").iter() {
+        for element in elements.iter() {
             match element {
                 Element::Shape(s) => {
                     let base_index = vertices.len();

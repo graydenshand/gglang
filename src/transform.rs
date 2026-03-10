@@ -22,15 +22,10 @@ impl ContinuousNumericScale {
         self.min <= value && value <= self.max
     }
 
-    /// Map a position on this scale to another scale
+    /// Map a position on this scale to another scale.
+    ///
+    /// Extrapolates linearly for values outside [min, max].
     pub fn map_position(&self, other: &Self, position: f64) -> f64 {
-        assert!(
-            self.contains(position),
-            "Value not in range ({}, {}): {}",
-            self.min,
-            self.max,
-            position
-        );
         (position - self.min) / (self.max - self.min) * (other.max - other.min) + other.min
     }
 
@@ -102,6 +97,40 @@ impl ContinuousNumericScale {
 
 pub const NDC_SCALE: ContinuousNumericScale = ContinuousNumericScale { min: -1., max: 1. };
 pub const PERCENT_SCALE: ContinuousNumericScale = ContinuousNumericScale { min: 0., max: 100. };
+
+/// Compute "nice" tick values in the range [min, max].
+///
+/// Uses a standard nice-numbers algorithm: round the step to the nearest
+/// 1, 2, or 5 × power of 10, then enumerate ticks from the first multiple
+/// above min to max.
+pub fn nice_ticks(min: f64, max: f64, target_count: usize) -> Vec<f64> {
+    if min >= max || target_count == 0 {
+        return vec![];
+    }
+    let range = max - min;
+    let rough_step = range / target_count as f64;
+    let magnitude = rough_step.log10().floor();
+    let power = 10f64.powf(magnitude);
+    let normalized = rough_step / power;
+    let step = if normalized <= 1.0 {
+        power
+    } else if normalized <= 2.0 {
+        2.0 * power
+    } else if normalized <= 5.0 {
+        5.0 * power
+    } else {
+        10.0 * power
+    };
+
+    let first = (min / step).ceil() * step;
+    let mut ticks = vec![];
+    let mut tick = first;
+    while tick <= max + step * 1e-10 {
+        ticks.push(tick);
+        tick += step;
+    }
+    ticks
+}
 
 #[cfg(test)]
 mod tests {

@@ -38,8 +38,17 @@ A grid split (for facets) would be a 2D generalization of the same concept.
 - `src/shape.rs` — `WindowSegment` (lines 77-180), the leaf node type
 - `src/frame.rs` — current one-shot layout via `with_margin()` (line 67)
 
+## Motivating example: Y axis labels
+
+The Y axis currently places labels using an out-of-bounds `Unit::NDC(-1.2)` coordinate that extrapolates outside the plot window segment into the margin (`plot.rs`, `ScaleYContinuous::render()`). This works, but it's a hack — the label position is computed relative to the plot segment even though it logically belongs to the Y axis gutter.
+
+The right fix is to give `ScaleYContinuous` its own `WindowSegment` covering the Y axis gutter. Within that segment, the axis line sits at the right edge (`Unit::NDC(1.)`), tick marks protrude from the right edge leftward, and labels sit at the left edge (`Unit::NDC(-1.)` or `Unit::Percent(0.)`), all using normal in-bounds coordinates.
+
+This requires `Scale::render()` to accept a `WindowSegment` parameter. That signature change should be deferred until the layout tree is in place to supply the segment, since computing gutter dimensions involves knowing text metrics (label width) and available space — both layout concerns.
+
 ## Open questions
 
 - Should the layout tree be resolved eagerly (top-down, once, before rendering) or lazily (each node resolves on demand)?
 - How should content-sized nodes work — does each geom/text element report its size before layout, or is layout approximate with overflow clipping?
 - Does the layout tree need to be serializable (e.g., for debugging or inspection)?
+- `Scale::render()` signature: once the layout tree exists, should scales receive a `WindowSegment` directly, or should they emit elements in a normalized coordinate space and have the layout tree apply the transform?

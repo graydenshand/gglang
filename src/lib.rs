@@ -16,9 +16,9 @@ A pest parser for the language.
 
 Abstract Syntax Tree representation of the language.
 
-#### PlotSpec
+#### Compiler
 
-A more structured representation of the AST, suitable for rendering.
+Compiles the AST into a Blueprint, the domain model for rendering.
 
 ### Rendering
 
@@ -44,7 +44,10 @@ Layer 4
 */
 
 pub mod app;
+pub mod ast;
+pub mod compile;
+pub mod data;
 mod frame;
-mod plot;
+pub mod plot;
 mod shape;
 pub mod transform;

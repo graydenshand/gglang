@@ -3,6 +3,8 @@
 use std::{iter, sync::Arc, vec};
 
 use crate::frame::Frame;
+use crate::plot::{Blueprint, PlotData, Theme};
+use crate::shape::Element;
 use glyph_brush::ab_glyph::FontRef;
 use winit::{
     application::ApplicationHandler,
@@ -26,14 +28,18 @@ pub struct AppState<'a> {
     window: Arc<Window>,
     frame: Option<Frame>,
     brush: TextBrush<FontRef<'a>>,
+    elements: Vec<Element>,
+    theme: Theme,
 }
 
 impl AppState<'_> {
-    async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+    async fn new(
+        window: Arc<Window>,
+        elements: Vec<Element>,
+        theme: Theme,
+    ) -> anyhow::Result<Self> {
         let size = window.inner_size();
 
-        // The instance is a handle to our GPU
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -57,8 +63,6 @@ impl AppState<'_> {
                 label: None,
                 required_features: wgpu::Features::empty(),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                // WebGL doesn't support all of wgpu's features, so if
-                // we're building for the web we'll have to disable some.
                 required_limits: if cfg!(target_arch = "wasm32") {
                     wgpu::Limits::downlevel_webgl2_defaults()
                 } else {
@@ -71,9 +75,6 @@ impl AppState<'_> {
 
         let surface_caps = surface.get_capabilities(&adapter);
 
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
             .formats
             .iter()
@@ -107,7 +108,9 @@ impl AppState<'_> {
             is_surface_configured: false,
             window,
             frame: None,
-            brush: brush,
+            brush,
+            elements,
+            theme,
         })
     }
 
@@ -122,7 +125,7 @@ impl AppState<'_> {
                 self.config.height as f32,
                 &self.queue,
             );
-            self.update() // update on resize
+            self.update()
         }
     }
 
@@ -133,6 +136,8 @@ impl AppState<'_> {
             self.window.clone(),
             &self.queue,
             &mut self.brush,
+            &self.elements,
+            &self.theme,
         );
         self.frame = Some(frame);
     }
@@ -140,7 +145,6 @@ impl AppState<'_> {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
 
-        // We can't render unless the surface is configured
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -179,7 +183,6 @@ impl AppState<'_> {
                 multiview_mask: None,
             });
 
-            // Render the frame
             if let Some(frame) = &mut self.frame {
                 frame.render(&mut render_pass, &self.brush);
             }
@@ -205,14 +208,22 @@ pub struct App {
     #[cfg(target_arch = "wasm32")]
     proxy: Option<winit::event_loop::EventLoopProxy<AppState<'static>>>,
     state: Option<AppState<'static>>,
+    pending_elements: Option<Vec<Element>>,
+    pending_theme: Option<Theme>,
 }
 
 impl App {
-    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<AppState<'static>>) -> Self {
+    pub fn new(
+        elements: Vec<Element>,
+        theme: Theme,
+        #[cfg(target_arch = "wasm32")] event_loop: &EventLoop<AppState<'static>>,
+    ) -> Self {
         #[cfg(target_arch = "wasm32")]
         let proxy = Some(event_loop.create_proxy());
         Self {
             state: None,
+            pending_elements: Some(elements),
+            pending_theme: Some(theme),
             #[cfg(target_arch = "wasm32")]
             proxy,
         }
@@ -240,9 +251,13 @@ impl ApplicationHandler<AppState<'static>> for App {
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
+        let elements = self.pending_elements.take().unwrap_or_default();
+        let theme = self.pending_theme.take().unwrap_or_default();
+
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.state = Some(pollster::block_on(AppState::new(window)).unwrap());
+            self.state =
+                Some(pollster::block_on(AppState::new(window, elements, theme)).unwrap());
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -251,7 +266,7 @@ impl ApplicationHandler<AppState<'static>> for App {
                 wasm_bindgen_futures::spawn_local(async move {
                     assert!(proxy
                         .send_event(
-                            AppState::new(window)
+                            AppState::new(window, elements, theme)
                                 .await
                                 .expect("Unable to create canvas!!!")
                         )
@@ -289,10 +304,8 @@ impl ApplicationHandler<AppState<'static>> for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                // state.update();
                 match state.render() {
                     Ok(_) => {}
-                    // Reconfigure the surface if it's lost or outdated
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                         let size = state.window.inner_size();
                         state.resize(size.width, size.height);
@@ -321,7 +334,7 @@ impl ApplicationHandler<AppState<'static>> for App {
     }
 }
 
-pub fn run() -> anyhow::Result<()> {
+pub fn run(mut blueprint: Blueprint, data: PlotData) -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
@@ -331,8 +344,13 @@ pub fn run() -> anyhow::Result<()> {
         console_log::init_with_level(log::Level::Info).unwrap_throw();
     }
 
+    let elements = blueprint.render(data).map_err(|e| anyhow::anyhow!(e))?;
+    let theme = Theme::default();
+
     let event_loop = EventLoop::with_user_event().build()?;
     let mut app = App::new(
+        elements,
+        theme,
         #[cfg(target_arch = "wasm32")]
         &event_loop,
     );
@@ -345,7 +363,5 @@ pub fn run() -> anyhow::Result<()> {
 #[wasm_bindgen(start)]
 pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
     console_error_panic_hook::set_once();
-    run().unwrap_throw();
-
-    Ok(())
+    unimplemented!("WASM target requires data to be passed via JS interop");
 }
