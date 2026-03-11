@@ -1,3 +1,2 @@
 MAP x=:x, y=:y, color=:species
 GEOM POINT
-TITLE "Color Segmentation Test"

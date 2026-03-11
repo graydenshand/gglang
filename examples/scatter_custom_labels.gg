@@ -1,0 +1,4 @@
+GEOM POINT
+TITLE "Iris Sepal Dimensions"
+XLABEL "Sepal width"
+YLABEL "Sepal length"

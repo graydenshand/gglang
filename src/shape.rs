@@ -286,10 +286,10 @@ pub enum HAlign {
 
 #[derive(Clone, Debug)]
 pub struct Text {
-    value: String,
-    font_size: f32,
-    position: (Unit, Unit),
-    h_align: HAlign,
+    pub value: String,
+    pub font_size: f32,
+    pub position: (Unit, Unit),
+    pub h_align: HAlign,
 }
 impl Text {
     pub fn new(value: String, font_size: f32, position: (Unit, Unit)) -> Self {

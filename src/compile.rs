@@ -1,34 +1,23 @@
 use crate::ast::{AstAesthetic, GeometryType, Program, Statement};
 use crate::plot::{
-    Aesthetic, Axis, Blueprint, GeomPoint, IdentityTransform, Layer, Mapping,
-    ScaleColorDiscrete, ScalePositionContinuous, Theme,
+    Aesthetic, Blueprint, GeomPoint, IdentityTransform, Layer, Mapping, Theme,
 };
 
 pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
     let mut bp = Blueprint::new(theme);
     let mut mappings: Vec<Mapping> = vec![];
-    let mut has_x = false;
-    let mut has_y = false;
-    let mut has_color = false;
+    let mut mapped_aesthetics: Vec<Aesthetic> = vec![];
 
     for stmt in &program.statements {
         match stmt {
             Statement::Map(data_mappings) => {
                 for dm in data_mappings {
                     let aesthetic = match dm.aesthetic {
-                        AstAesthetic::X => {
-                            has_x = true;
-                            Aesthetic::X
-                        }
-                        AstAesthetic::Y => {
-                            has_y = true;
-                            Aesthetic::Y
-                        }
-                        AstAesthetic::Color => {
-                            has_color = true;
-                            Aesthetic::Color
-                        }
+                        AstAesthetic::X => Aesthetic::X,
+                        AstAesthetic::Y => Aesthetic::Y,
+                        AstAesthetic::Color => Aesthetic::Color,
                     };
+                    mapped_aesthetics.push(aesthetic);
                     mappings.push(Mapping {
                         aesthetic,
                         variable: dm.column.clone(),
@@ -55,14 +44,11 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     for m in mappings {
         bp = bp.with_mapping(m);
     }
-    if has_x {
-        bp = bp.with_scale(Box::new(ScalePositionContinuous::new(Axis::X)));
-    }
-    if has_y {
-        bp = bp.with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
-    }
-    if has_color {
-        bp = bp.with_scale(Box::new(ScaleColorDiscrete::new()));
+    for aes in &mapped_aesthetics {
+        let family = aes.family();
+        if !bp.has_scale_for_family(family) {
+            bp = bp.with_scale(aes.default_scale());
+        }
     }
 
     Ok(bp)

@@ -68,6 +68,10 @@ impl<'a> Blueprint<'a> {
         self
     }
 
+    pub fn has_scale_for_family(&self, family: AestheticFamily) -> bool {
+        self.scales.iter().any(|s| s.aesthetic_family() == family)
+    }
+
     pub fn with_facet(mut self, facet: Variable) -> Self {
         self.facets.push(facet);
         self
@@ -113,13 +117,37 @@ impl<'a> Blueprint<'a> {
     /// Data is provided with raw column names; the blueprint's mappings are
     /// applied to bind columns to aesthetic channels before rendering.
     pub fn render(&mut self, raw_data: PlotData) -> Result<Vec<Element>, String> {
-        // Apply mappings: raw column names → aesthetic channel names
+        // Apply explicit mappings: raw column names → aesthetic channel names
         let mut data = PlotData::new();
+        let mut mapped_aesthetics: Vec<Aesthetic> = vec![];
         for mapping in &self.mappings {
             let param = raw_data
                 .get(&mapping.variable)
                 .ok_or_else(|| format!("Column '{}' not found in data", mapping.variable))?;
             data.insert(mapping.aesthetic.name().to_string(), param.clone());
+            mapped_aesthetics.push(mapping.aesthetic);
+        }
+
+        // Auto-map: if a data column name matches an aesthetic name and that
+        // aesthetic isn't already explicitly mapped, use it as the default.
+        for aes in Aesthetic::all() {
+            if mapped_aesthetics.contains(aes) {
+                continue;
+            }
+            if let Some(param) = raw_data.get(aes.name()) {
+                data.insert(aes.name().to_string(), param.clone());
+                mapped_aesthetics.push(*aes);
+                self.mappings.push(Mapping {
+                    aesthetic: *aes,
+                    variable: aes.name().to_string(),
+                });
+
+                // Auto-create scale if one doesn't exist for this family
+                let family = aes.family();
+                if !self.scales.iter().any(|s| s.aesthetic_family() == family) {
+                    self.scales.push(aes.default_scale());
+                }
+            }
         }
 
         // Validate required mappings are satisfied for all geometries
@@ -435,11 +463,23 @@ pub enum Aesthetic {
 }
 
 impl Aesthetic {
+    pub fn all() -> &'static [Aesthetic] {
+        &[Aesthetic::X, Aesthetic::Y, Aesthetic::Color]
+    }
+
     pub fn family(&self) -> AestheticFamily {
         match self {
             Aesthetic::X => AestheticFamily::HorizontalPosition,
             Aesthetic::Y => AestheticFamily::VerticalPosition,
             Aesthetic::Color => AestheticFamily::Color,
+        }
+    }
+
+    pub fn default_scale(&self) -> Box<dyn Scale> {
+        match self {
+            Aesthetic::X => Box::new(ScalePositionContinuous::new(Axis::X)),
+            Aesthetic::Y => Box::new(ScalePositionContinuous::new(Axis::Y)),
+            Aesthetic::Color => Box::new(ScaleColorDiscrete::new()),
         }
     }
 
@@ -974,6 +1014,101 @@ mod test {
         data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0]));
 
         let elements = bp.render(data).expect("render should succeed without color");
+        assert!(elements.len() > 2);
+    }
+
+    #[test]
+    fn auto_map_from_column_names() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomPoint {}),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        // No explicit mappings or scales — just a geom
+        let mut bp = Blueprint::new(&theme).with_layer(layer);
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+
+        let elements = bp.render(data).expect("auto-mapping should work");
+        // Should have 2 points + axis elements
+        assert!(elements.len() > 2);
+    }
+
+    #[test]
+    fn auto_map_with_color() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomPoint {}),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme).with_layer(layer);
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+        data.insert("color".into(), PlotParameter::StringArray(vec!["a".into(), "b".into()]));
+
+        let elements = bp.render(data).expect("auto-mapping with color should work");
+        // Should have 2 points + axis elements + legend elements
+        assert!(elements.len() > 4);
+    }
+
+    #[test]
+    fn auto_map_produces_axis_labels() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomPoint {}),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme).with_layer(layer);
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+
+        let elements = bp.render(data).unwrap();
+        let text_contents: Vec<String> = elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::Text(t) => Some(t.value.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(text_contents.contains(&"x".to_string()), "should have x axis label");
+        assert!(text_contents.contains(&"y".to_string()), "should have y axis label");
+    }
+
+    #[test]
+    fn explicit_mapping_overrides_auto() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomPoint {}),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        // Explicitly map "year" → X, but data also has an "x" column
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "year".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
+        data.insert("year".into(), PlotParameter::FloatArray(vec![2020.0, 2021.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+
+        let elements = bp.render(data).expect("explicit mapping should take precedence");
         assert!(elements.len() > 2);
     }
 
