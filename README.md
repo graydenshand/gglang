@@ -21,7 +21,7 @@ Portable output (e.g. web & native)
 GQL is a language based on the ggplot2 API and the grammar of graphics.
 
 ```
-MAP :x TO x, :y TO y
+MAP x=:x, y=:y
 GEOM POINT
 ```
 

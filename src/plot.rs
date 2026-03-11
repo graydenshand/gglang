@@ -352,6 +352,10 @@ impl Geometry for GeomPoint {
         vec![Aesthetic::X, Aesthetic::Y]
     }
 
+    fn extra_aesthetics(&self) -> Vec<Aesthetic> {
+        vec![Aesthetic::Color]
+    }
+
     fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element> {
         let mut points = vec![];
         let x_scale = scales
@@ -376,12 +380,25 @@ impl Geometry for GeomPoint {
             _ => panic!("expected unit array from position scale"),
         };
 
+        // Resolve per-point colors if a color aesthetic is mapped
+        let colors: Option<Vec<[f32; 3]>> = data.get("color").map(|color_data| {
+            let color_scale = scales
+                .iter()
+                .find(|s| s.aesthetic_family() == AestheticFamily::Color)
+                .expect("color scale must exist when color aesthetic is mapped");
+            match color_scale.map(color_data).expect("color scale was fit") {
+                PlotParameter::ColorArray(v) => v,
+                _ => panic!("expected color array from color scale"),
+            }
+        });
+
         for i in 0..x.len() {
+            let color = colors.as_ref().map_or([0.0, 0.0, 0.0], |c| c[i]);
             let r = Rectangle::new(
                 [x_mapped[i], y_mapped[i]],
                 Unit::Pixels(16),
                 Unit::Pixels(16),
-                [0.0, 0.0, 0.0],
+                color,
             );
             points.push(Element::Shape(Box::new(r)));
         }
@@ -414,7 +431,7 @@ pub trait PositionAdjustment {}
 pub enum Aesthetic {
     X,
     Y,
-    // Future: Color, Shape, Size
+    Color,
 }
 
 impl Aesthetic {
@@ -422,6 +439,7 @@ impl Aesthetic {
         match self {
             Aesthetic::X => AestheticFamily::HorizontalPosition,
             Aesthetic::Y => AestheticFamily::VerticalPosition,
+            Aesthetic::Color => AestheticFamily::Color,
         }
     }
 
@@ -429,6 +447,7 @@ impl Aesthetic {
         match self {
             Aesthetic::X => "x",
             Aesthetic::Y => "y",
+            Aesthetic::Color => "color",
         }
     }
 }
@@ -438,7 +457,7 @@ impl Aesthetic {
 pub enum AestheticFamily {
     HorizontalPosition,
     VerticalPosition,
-    // Future: Color
+    Color,
 }
 
 /// A mapping from a data variable to an aesthetic channel.
@@ -630,6 +649,113 @@ impl Scale for ScalePositionContinuous {
     }
 }
 
+/// Convert HSL (h in 0..360, s and l in 0..1) to RGB (each in 0..1).
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> [f32; 3] {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let h_prime = h / 60.0;
+    let x = c * (1.0 - (h_prime % 2.0 - 1.0).abs());
+    let (r1, g1, b1) = match h_prime as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    [r1 + m, g1 + m, b1 + m]
+}
+
+/// A discrete color scale that maps categorical string values to colors.
+pub struct ScaleColorDiscrete {
+    categories: Vec<String>,
+    palette: Vec<[f32; 3]>,
+}
+
+impl ScaleColorDiscrete {
+    pub fn new() -> Self {
+        Self {
+            categories: vec![],
+            palette: vec![],
+        }
+    }
+}
+
+impl Scale for ScaleColorDiscrete {
+    fn append(&mut self, v: &PlotParameter) -> Result<(), String> {
+        match v {
+            PlotParameter::StringArray(strings) => {
+                for s in strings {
+                    if !self.categories.contains(s) {
+                        self.categories.push(s.clone());
+                    }
+                }
+                Ok(())
+            }
+            _ => Err("ScaleColorDiscrete expects StringArray".into()),
+        }
+    }
+
+    fn fit(&mut self) -> Result<(), String> {
+        let n = self.categories.len();
+        self.palette = (0..n)
+            .map(|i| {
+                let hue = (i as f32 / n as f32) * 360.0;
+                hsl_to_rgb(hue, 0.65, 0.55)
+            })
+            .collect();
+        Ok(())
+    }
+
+    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
+        match v {
+            PlotParameter::StringArray(strings) => {
+                let colors: Vec<[f32; 3]> = strings
+                    .iter()
+                    .map(|s| {
+                        let idx = self
+                            .categories
+                            .iter()
+                            .position(|c| c == s)
+                            .expect("category not found in scale");
+                        self.palette[idx]
+                    })
+                    .collect();
+                Ok(PlotParameter::ColorArray(colors))
+            }
+            _ => Err("ScaleColorDiscrete expects StringArray".into()),
+        }
+    }
+
+    fn render(&self) -> Vec<Element> {
+        let mut elements = vec![];
+        let x_ndc = 1.15_f32;
+        let y_start = 0.8_f32;
+        let spacing = 0.2_f32;
+
+        for (i, cat) in self.categories.iter().enumerate() {
+            let y = y_start - (i as f32 * spacing);
+            let swatch = Rectangle::new(
+                [Unit::NDC(x_ndc), Unit::NDC(y)],
+                Unit::Pixels(14),
+                Unit::Pixels(14),
+                self.palette[i],
+            );
+            elements.push(Element::Shape(Box::new(swatch)));
+            elements.push(Element::Text(Text::new(
+                cat.clone(),
+                20.0,
+                (Unit::NDC(x_ndc + 0.1), Unit::NDC(y)),
+            )));
+        }
+        elements
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        AestheticFamily::Color
+    }
+}
+
 // should this be a trait?
 enum CoordinateSystem {
     Cartesian,
@@ -652,6 +778,8 @@ impl Default for Theme {
 pub enum PlotParameter {
     FloatArray(Vec<f64>),
     IntArray(Vec<i64>),
+    StringArray(Vec<String>),
+    ColorArray(Vec<[f32; 3]>),
 
     // UnitArray represents post-transform position values
     UnitArray(Vec<Unit>),
@@ -661,6 +789,8 @@ impl PlotParameter {
         match self {
             Self::FloatArray(v) => v.len(),
             Self::IntArray(v) => v.len(),
+            Self::StringArray(v) => v.len(),
+            Self::ColorArray(v) => v.len(),
             Self::UnitArray(v) => v.len(),
         }
     }
@@ -678,6 +808,8 @@ impl PlotParameter {
                     Unit::Percent(v) => *v as f64,
                 })
                 .collect()),
+            Self::StringArray(_) => Err("Cannot convert StringArray to f64".into()),
+            Self::ColorArray(_) => Err("Cannot convert ColorArray to f64".into()),
         }
     }
 }
@@ -720,6 +852,130 @@ impl MappedData {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn hsl_to_rgb_red() {
+        let [r, g, b] = hsl_to_rgb(0.0, 1.0, 0.5);
+        assert!((r - 1.0).abs() < 0.01);
+        assert!(g.abs() < 0.01);
+        assert!(b.abs() < 0.01);
+    }
+
+    #[test]
+    fn hsl_to_rgb_green() {
+        let [r, g, b] = hsl_to_rgb(120.0, 1.0, 0.5);
+        assert!(r.abs() < 0.01);
+        assert!((g - 1.0).abs() < 0.01);
+        assert!(b.abs() < 0.01);
+    }
+
+    #[test]
+    fn hsl_to_rgb_blue() {
+        let [r, g, b] = hsl_to_rgb(240.0, 1.0, 0.5);
+        assert!(r.abs() < 0.01);
+        assert!(g.abs() < 0.01);
+        assert!((b - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn scale_color_discrete_round_trip() {
+        let mut scale = ScaleColorDiscrete::new();
+        let input = PlotParameter::StringArray(vec![
+            "a".into(), "b".into(), "a".into(), "c".into(),
+        ]);
+        scale.append(&input).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&input).unwrap();
+        match mapped {
+            PlotParameter::ColorArray(colors) => {
+                assert_eq!(colors.len(), 4);
+                // "a" appears at index 0 and 2 — same color
+                assert_eq!(colors[0], colors[2]);
+                // "a", "b", "c" are different colors
+                assert_ne!(colors[0], colors[1]);
+                assert_ne!(colors[1], colors[3]);
+                assert_ne!(colors[0], colors[3]);
+            }
+            _ => panic!("Expected ColorArray"),
+        }
+    }
+
+    #[test]
+    fn scale_color_discrete_preserves_insertion_order() {
+        let mut scale = ScaleColorDiscrete::new();
+        let input = PlotParameter::StringArray(vec![
+            "banana".into(), "apple".into(), "banana".into(),
+        ]);
+        scale.append(&input).unwrap();
+        scale.fit().unwrap();
+
+        // First unique value gets hue 0, second gets hue 180
+        let legend = scale.render();
+        // Legend should have 2 entries (swatch + label each)
+        assert_eq!(legend.len(), 4);
+    }
+
+    #[test]
+    fn scale_color_discrete_rejects_float() {
+        let mut scale = ScaleColorDiscrete::new();
+        let input = PlotParameter::FloatArray(vec![1.0, 2.0]);
+        assert!(scale.append(&input).is_err());
+    }
+
+    #[test]
+    fn render_blueprint_with_color() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomPoint {}),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Color, variable: "species".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)))
+            .with_scale(Box::new(ScaleColorDiscrete::new()));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 3.0, 5.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0, 6.0]));
+        data.insert("species".into(), PlotParameter::StringArray(vec![
+            "a".into(), "b".into(), "a".into(),
+        ]));
+
+        let elements = bp.render(data).expect("render should succeed");
+        // Should have: 3 points + axis elements + legend elements
+        assert!(elements.len() > 3);
+    }
+
+    #[test]
+    fn render_blueprint_without_color() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomPoint {}),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 3.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0]));
+
+        let elements = bp.render(data).expect("render should succeed without color");
+        assert!(elements.len() > 2);
+    }
 
     #[test]
     fn create_blueprint() {

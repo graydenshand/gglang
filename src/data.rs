@@ -10,7 +10,8 @@ pub fn load_csv(path: &Path) -> Result<PlotData, String> {
     let header = lines.next().ok_or("CSV file is empty")?;
     let columns: Vec<&str> = header.split(',').map(|s| s.trim()).collect();
 
-    let mut data: Vec<Vec<f64>> = vec![vec![]; columns.len()];
+    // Read all values as strings first
+    let mut string_data: Vec<Vec<String>> = vec![vec![]; columns.len()];
 
     for (line_num, line) in lines.enumerate() {
         if line.trim().is_empty() {
@@ -26,21 +27,19 @@ pub fn load_csv(path: &Path) -> Result<PlotData, String> {
             ));
         }
         for (i, val) in values.iter().enumerate() {
-            let v: f64 = val.trim().parse().map_err(|_| {
-                format!(
-                    "Invalid number '{}' at row {}, col {}",
-                    val,
-                    line_num + 2,
-                    i + 1
-                )
-            })?;
-            data[i].push(v);
+            string_data[i].push(val.trim().to_string());
         }
     }
 
+    // Per column: if all values parse as f64, use FloatArray; otherwise StringArray
     let mut plot_data = PlotData::new();
     for (i, col) in columns.iter().enumerate() {
-        plot_data.insert(col.to_string(), PlotParameter::FloatArray(data[i].clone()));
+        let floats: Result<Vec<f64>, _> = string_data[i].iter().map(|s| s.parse::<f64>()).collect();
+        let param = match floats {
+            Ok(v) => PlotParameter::FloatArray(v),
+            Err(_) => PlotParameter::StringArray(string_data[i].clone()),
+        };
+        plot_data.insert(col.to_string(), param);
     }
 
     Ok(plot_data)
@@ -50,6 +49,35 @@ pub fn load_csv(path: &Path) -> Result<PlotData, String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn test_load_csv_mixed_types() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_mixed.csv");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, "x,y,species").unwrap();
+        writeln!(f, "1,2,setosa").unwrap();
+        writeln!(f, "3,4,versicolor").unwrap();
+        writeln!(f, "5,6,setosa").unwrap();
+
+        let data = load_csv(&path).expect("Should load CSV");
+        assert!(data.contains("x"));
+        assert!(data.contains("species"));
+
+        // Numeric columns should be FloatArray
+        match data.get("x").unwrap() {
+            PlotParameter::FloatArray(v) => assert_eq!(v, &[1.0, 3.0, 5.0]),
+            other => panic!("Expected FloatArray for x, got {:?}", std::mem::discriminant(other)),
+        }
+
+        // String columns should be StringArray
+        match data.get("species").unwrap() {
+            PlotParameter::StringArray(v) => {
+                assert_eq!(v, &["setosa", "versicolor", "setosa"]);
+            }
+            other => panic!("Expected StringArray for species, got {:?}", std::mem::discriminant(other)),
+        }
+    }
 
     #[test]
     fn test_load_csv() {

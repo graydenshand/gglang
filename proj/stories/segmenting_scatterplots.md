@@ -18,3 +18,9 @@ FACET BY :var [, ...] [ROWS 2 | COLUMNS 3] [TRANSPOSE]
 - Can specify one or more facet variables
 - Can specify either number of rows, number of columns, or auto layout
 - Can flip facet direction by transposing
+
+# Status
+
+Partially complete.
+
+Color segmenetation is implemented; shape and faceting segmentation are deferred.

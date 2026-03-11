@@ -1,7 +1,7 @@
 use crate::ast::{AstAesthetic, GeometryType, Program, Statement};
 use crate::plot::{
     Aesthetic, Axis, Blueprint, GeomPoint, IdentityTransform, Layer, Mapping,
-    ScalePositionContinuous, Theme,
+    ScaleColorDiscrete, ScalePositionContinuous, Theme,
 };
 
 pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
@@ -9,6 +9,7 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     let mut mappings: Vec<Mapping> = vec![];
     let mut has_x = false;
     let mut has_y = false;
+    let mut has_color = false;
 
     for stmt in &program.statements {
         match stmt {
@@ -22,6 +23,10 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                         AstAesthetic::Y => {
                             has_y = true;
                             Aesthetic::Y
+                        }
+                        AstAesthetic::Color => {
+                            has_color = true;
+                            Aesthetic::Color
                         }
                     };
                     mappings.push(Mapping {
@@ -55,6 +60,9 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     }
     if has_y {
         bp = bp.with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+    }
+    if has_color {
+        bp = bp.with_scale(Box::new(ScaleColorDiscrete::new()));
     }
 
     Ok(bp)

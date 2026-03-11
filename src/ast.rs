@@ -30,6 +30,7 @@ pub struct DataMapping {
 pub enum AstAesthetic {
     X,
     Y,
+    Color,
 }
 
 #[derive(Debug)]
@@ -67,6 +68,7 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                         let aesthetic = match aes_str {
                                             "x" => AstAesthetic::X,
                                             "y" => AstAesthetic::Y,
+                                            "color" => AstAesthetic::Color,
                                             other => {
                                                 return Err(format!(
                                                     "Unsupported aesthetic: {}",
@@ -147,6 +149,22 @@ mod tests {
         match &program.statements[1] {
             Statement::Geom(GeometryType::Point) => {}
             _ => panic!("Expected Geom Point statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_color_aesthetic() {
+        let source = "MAP x=:x, y=:y, color=:species\nGEOM POINT";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 2);
+
+        match &program.statements[0] {
+            Statement::Map(mappings) => {
+                assert_eq!(mappings.len(), 3);
+                assert_eq!(mappings[2].column, "species");
+                assert!(matches!(mappings[2].aesthetic, AstAesthetic::Color));
+            }
+            _ => panic!("Expected Map statement"),
         }
     }
 

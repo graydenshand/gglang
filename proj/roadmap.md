@@ -4,7 +4,7 @@
 
 1. ~~**Scale generalization**~~ (`issues/issue-scale-generalization.md`) — ✅ Done. Unified `ScaleXContinuous`/`ScaleYContinuous` into `ScalePositionContinuous`; `Aesthetic`, `AestheticFamily`, `Mapping` are now enums/structs instead of traits.
 
-2. **Segmenting scatterplots** (`stories/segmenting_scatterplots.md`) — Color and shape aesthetics on `GEOM POINT`, discrete scales, legends. Depends on scale generalization.
+2. **Segmenting scatterplots** (`stories/segmenting_scatterplots.md`) — Color ✅ done (`ScaleColorDiscrete`, `Aesthetic::Color`, mixed-type CSV, legend rendering). Shape deferred — requires new `Shape` implementations and shader architecture work. Faceting deferred, requires layout tree.
 
 ## Tier 2 — New geom types and deeper architecture
 
