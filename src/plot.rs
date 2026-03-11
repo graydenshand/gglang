@@ -1,8 +1,6 @@
 use crate::shape::{Element, Rectangle, Text, Unit};
 use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
-use std::any::Any;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// A model of a plot
 ///
@@ -118,14 +116,10 @@ impl<'a> Blueprint<'a> {
         // Apply mappings: raw column names → aesthetic channel names
         let mut data = PlotData::new();
         for mapping in &self.mappings {
-            let (col, aes_name) = match mapping {
-                Mapping::X(col) => (col.as_str(), "x"),
-                Mapping::Y(col) => (col.as_str(), "y"),
-            };
             let param = raw_data
-                .get(col)
-                .ok_or_else(|| format!("Column '{}' not found in data", col))?;
-            data.insert(aes_name.to_string(), param.clone());
+                .get(&mapping.variable)
+                .ok_or_else(|| format!("Column '{}' not found in data", mapping.variable))?;
+            data.insert(mapping.aesthetic.name().to_string(), param.clone());
         }
 
         // Validate required mappings are satisfied for all geometries
@@ -172,16 +166,16 @@ impl<'a> Blueprint<'a> {
 
         // Derive default axis labels from mapping column names
         let x_label = self.x_label.clone().or_else(|| {
-            self.mappings.iter().find_map(|m| match m {
-                Mapping::X(col) => Some(col.clone()),
-                _ => None,
-            })
+            self.mappings
+                .iter()
+                .find(|m| m.aesthetic == Aesthetic::X)
+                .map(|m| m.variable.clone())
         });
         let y_label = self.y_label.clone().or_else(|| {
-            self.mappings.iter().find_map(|m| match m {
-                Mapping::Y(col) => Some(col.clone()),
-                _ => None,
-            })
+            self.mappings
+                .iter()
+                .find(|m| m.aesthetic == Aesthetic::Y)
+                .map(|m| m.variable.clone())
         });
 
         // Emit label elements
@@ -271,12 +265,12 @@ impl Layer {
 /// system.
 pub trait Geometry {
     /// These aesthetics are required to use this geometry.
-    fn required_aesthetics(&self) -> Vec<Rc<dyn Aesthetic>>;
+    fn required_aesthetics(&self) -> Vec<Aesthetic>;
 
     /// These aesthetics are supported, but not required.
     ///
     /// By default, no extra aesthetics are supported
-    fn extra_aesthetics(&self) -> Vec<Rc<dyn Aesthetic>> {
+    fn extra_aesthetics(&self) -> Vec<Aesthetic> {
         vec![]
     }
 
@@ -289,27 +283,27 @@ pub trait Geometry {
     ///
     /// Coordinates of the shapes are in data-space. These are later projected
     /// onto a coordinate system and translated into screen-space.
-    fn render(&self, data: &PlotData, sclaes: &Vec<Box<dyn Scale>>) -> Vec<Element>;
+    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element>;
 
     /// The list of aesthetic families that may be used in this layer
-    fn aesthetic_families(&self) -> Vec<Box<dyn AestheticFamily>> {
+    fn aesthetic_families(&self) -> Vec<AestheticFamily> {
         self.required_aesthetics()
             .iter()
             .chain(self.extra_aesthetics().iter())
-            .map(|a| a.aesthetic_family())
+            .map(|a| a.family())
             .collect()
     }
 
     /// Filter down the plot data to only the aesthetics used in this geometry, and convert to MappedData
     fn mapped_data(&self, data: &PlotData) -> MappedData {
-        let mut mapped_data: Vec<(Rc<dyn Aesthetic>, PlotParameter)> = vec![];
+        let mut mapped_data: Vec<(Aesthetic, PlotParameter)> = vec![];
         for aes in self
             .required_aesthetics()
             .iter()
             .chain(self.extra_aesthetics().iter())
         {
             if let Some(param) = data.get(aes.name()) {
-                mapped_data.push((aes.clone(), param.clone()));
+                mapped_data.push((*aes, param.clone()));
             }
         }
         MappedData { data: mapped_data }
@@ -318,20 +312,15 @@ pub trait Geometry {
     /// Update scales using the data in this plot
     fn update_scales(&self, scales: &mut Vec<Box<dyn Scale>>, data: &PlotData) {
         let mapped_data = self.mapped_data(&data);
-        let families: Vec<String> = self
-            .aesthetic_families()
-            .iter()
-            .map(|f| f.name().to_string())
-            // .cloned()
-            .collect();
+        let families: Vec<AestheticFamily> = self.aesthetic_families();
 
-        // build a map of family name to scale for the scales used in this plot
-        let mut family_scale_map: HashMap<String, &mut Box<dyn Scale>> = scales
+        // build a map of family to scale for the scales used in this plot
+        let mut family_scale_map: HashMap<AestheticFamily, &mut Box<dyn Scale>> = scales
             .iter_mut()
             .filter_map(|s| {
-                let name = s.aesthetic_family().name().to_string();
-                if families.contains(&name) {
-                    Some((name, s))
+                let family = s.aesthetic_family();
+                if families.contains(&family) {
+                    Some((family, s))
                 } else {
                     None
                 }
@@ -343,7 +332,7 @@ pub trait Geometry {
         // horizontal position scale
         for (aes, values) in mapped_data.data.iter() {
             let scale = family_scale_map
-                .get_mut(aes.aesthetic_family().name())
+                .get_mut(&aes.family())
                 .expect("scale exists in map");
             scale.append(values).expect("scale append failed");
         }
@@ -359,15 +348,15 @@ pub trait Geometry {
 /// Extra aeshetics: none
 pub struct GeomPoint;
 impl Geometry for GeomPoint {
-    fn required_aesthetics(&self) -> Vec<Rc<dyn Aesthetic>> {
-        vec![Rc::new(AesX {}), Rc::new(AesY {})]
+    fn required_aesthetics(&self) -> Vec<Aesthetic> {
+        vec![Aesthetic::X, Aesthetic::Y]
     }
 
     fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element> {
         let mut points = vec![];
         let x_scale = scales
             .iter()
-            .find(|s| s.aesthetic_family().name() == "HorizontalPosition")
+            .find(|s| s.aesthetic_family() == AestheticFamily::HorizontalPosition)
             .unwrap();
         let x = data
             .get("x")
@@ -379,7 +368,7 @@ impl Geometry for GeomPoint {
 
         let y_scale = scales
             .iter()
-            .find(|s| s.aesthetic_family().name() == "VerticalPosition")
+            .find(|s| s.aesthetic_family() == AestheticFamily::VerticalPosition)
             .unwrap();
         let y = data.get("y").expect("already validated");
         let y_mapped = match y_scale.map(y).expect("scales were fit to data") {
@@ -397,10 +386,6 @@ impl Geometry for GeomPoint {
             points.push(Element::Shape(Box::new(r)));
         }
         points
-    }
-
-    fn aesthetic_families(&self) -> Vec<Box<dyn AestheticFamily>> {
-        vec![Box::new(FamHPosition {}), Box::new(FamVPosition {})]
     }
 }
 
@@ -424,79 +409,43 @@ impl PositionAdjustment for IdentityTransform {}
 /// A position
 pub trait PositionAdjustment {}
 
-// Stores the mapping of a visual channel to a column
-#[derive(Clone)]
-pub enum Mapping {
-    X(String),
-    Y(String),
+/// An aesthetic channel that maps data to a visual property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Aesthetic {
+    X,
+    Y,
+    // Future: Color, Shape, Size
 }
 
-/// The Aesthetic trait is used to define an aesthetic.
-///
-/// Examples:
-/// - x / y
-/// - color
-/// - xmin/xmax
-/// - width/height
-/// - shape
-/// - linewidth
-/// - linetype
-///
-/// Each aesthetic must declare the AestheticFamily it belongs to.
-trait Aesthetic {
-    fn name(&self) -> &str;
-    fn aesthetic_family(&self) -> Box<dyn AestheticFamily>;
-}
+impl Aesthetic {
+    pub fn family(&self) -> AestheticFamily {
+        match self {
+            Aesthetic::X => AestheticFamily::HorizontalPosition,
+            Aesthetic::Y => AestheticFamily::VerticalPosition,
+        }
+    }
 
-/// The X Aesthetic defines an elements horizontal position.
-struct AesX {}
-impl Aesthetic for AesX {
-    fn name(&self) -> &str {
-        "x"
-    }
-    fn aesthetic_family(&self) -> Box<dyn AestheticFamily> {
-        Box::new(FamHPosition)
-    }
-}
-/// The Y Aesthetic defines an elements vertical position.
-struct AesY {}
-impl Aesthetic for AesY {
-    fn name(&self) -> &str {
-        "y"
-    }
-    fn aesthetic_family(&self) -> Box<dyn AestheticFamily> {
-        Box::new(FamVPosition)
+    pub fn name(&self) -> &str {
+        match self {
+            Aesthetic::X => "x",
+            Aesthetic::Y => "y",
+        }
     }
 }
 
-trait AestheticFamily {
-    fn name(&self) -> &str;
+/// Aesthetic families group related aesthetics that share a scale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AestheticFamily {
+    HorizontalPosition,
+    VerticalPosition,
+    // Future: Color
 }
 
-/// A family for scales and aesthetics that use horizontal position (x axis)
-#[derive(PartialEq)]
-struct FamHPosition;
-impl AestheticFamily for FamHPosition {
-    fn name(&self) -> &str {
-        "HorizontalPosition"
-    }
-}
-
-/// A family for scales and aesthetics that use vertical position (y axis)
-#[derive(PartialEq)]
-struct FamVPosition;
-impl AestheticFamily for FamVPosition {
-    fn name(&self) -> &str {
-        "VerticalPosition"
-    }
-}
-
-#[derive(PartialEq)]
-struct FamColor;
-impl AestheticFamily for FamColor {
-    fn name(&self) -> &str {
-        "Color"
-    }
+/// A mapping from a data variable to an aesthetic channel.
+#[derive(Clone, Debug)]
+pub struct Mapping {
+    pub aesthetic: Aesthetic,
+    pub variable: String,
 }
 
 /// Scales produce legends.
@@ -504,7 +453,7 @@ impl AestheticFamily for FamColor {
 ///
 /// For example, a continuous numeric scale maps length on the screen to
 /// the mapped variable. A discrete color scale maps color to a category.
-pub trait Scale: Any {
+pub trait Scale {
     /// Transform plot data for this scale.
     ///
     /// By default, no transformations are applied
@@ -526,56 +475,33 @@ pub trait Scale: Any {
     fn render(&self) -> Vec<Element>;
 
     /// Return the family this scale belongs to.
-    ///
-    /// Aesthetics are only compatible with scales in a single
-    /// scale family, and only one scale from a family can be
-    /// used in each plot.
-    fn aesthetic_family(&self) -> Box<dyn AestheticFamily>;
+    fn aesthetic_family(&self) -> AestheticFamily;
 }
 
-/// ScaleXContinuous is a positional scale.
-///
-/// It maps data points to horizontal positions over a portion of the screen.
-pub struct ScaleXContinuous {
-    /// The scale of the xaxis in data units
+/// Which axis a positional scale operates on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    X,
+    Y,
+}
+
+/// A unified continuous positional scale for both X and Y axes.
+pub struct ScalePositionContinuous {
+    axis: Axis,
     data_scale: Option<ContinuousNumericScale>,
 }
-impl ScaleXContinuous {
-    /// Create a new scale, mapping to a specific region of the screen
-    pub fn new() -> Self {
-        Self { data_scale: None }
-    }
-}
-impl Scale for ScaleXContinuous {
-    /// Extend scale by 10% to add a margin between data points and plot boundaries
-    fn fit(&mut self) -> Result<(), String> {
-        if let Some(s) = &self.data_scale {
-            self.data_scale = Some(s.scale(1.1));
-        }
-        Ok(())
-    }
 
-    /// Translate data values into relative ndc values for rendering position on screen
-    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
-        let values = v.as_f64()?;
-
-        if let Some(s) = &self.data_scale {
-            Ok(PlotParameter::UnitArray(
-                values
-                    .iter()
-                    .map(|v| Unit::NDC(s.map_position(&NDC_SCALE, *v) as f32))
-                    .collect(),
-            ))
-        } else {
-            Err("Scale is uninitialized".into())
+impl ScalePositionContinuous {
+    pub fn new(axis: Axis) -> Self {
+        Self {
+            axis,
+            data_scale: None,
         }
     }
 
-    /// Render x axis
-    fn render(&self) -> Vec<Element> {
+    fn render_x_axis(&self) -> Vec<Element> {
         let mut elements = vec![];
 
-        // draw primary line the full width of the allocated space
         let xaxis = Rectangle::new(
             [
                 Unit::NDC(NDC_SCALE.midpoint() as f32),
@@ -591,7 +517,6 @@ impl Scale for ScaleXContinuous {
         for tick_value in nice_ticks(s.min, s.max, 5) {
             let x_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
 
-            // tick mark: 1px wide, 6px tall
             let tick = Rectangle::new(
                 [Unit::NDC(x_ndc), Unit::NDC(NDC_SCALE.min as f32)],
                 Unit::Pixels(1),
@@ -600,7 +525,6 @@ impl Scale for ScaleXContinuous {
             );
             elements.push(Element::Shape(Box::new(tick)));
 
-            // label below tick
             let label = if tick_value.fract() == 0.0 {
                 format!("{}", tick_value as i64)
             } else {
@@ -616,68 +540,9 @@ impl Scale for ScaleXContinuous {
         elements
     }
 
-    /// The aesthetic family fo the scale
-    fn aesthetic_family(&self) -> Box<dyn AestheticFamily> {
-        Box::new(FamHPosition)
-    }
-
-    /// Append a set of values to the scale.
-    ///
-    /// Expands the min and max values of the scale if they don't
-    fn append(&mut self, v: &PlotParameter) -> Result<(), String> {
-        let new_scale = ContinuousNumericScale::from_vec(&v.as_f64()?);
-        if let Some(s) = &self.data_scale {
-            self.data_scale = Some(s.union(&new_scale));
-        } else {
-            self.data_scale = Some(new_scale);
-        }
-        Ok(())
-    }
-}
-
-/// ScaleYContinuous is a positional scale.
-///
-/// It maps data points to vertical positions over a portion of the screen.
-pub struct ScaleYContinuous {
-    /// The scale of the y-axis in data units
-    data_scale: Option<ContinuousNumericScale>,
-}
-impl ScaleYContinuous {
-    /// Create a new scale, mapping to a specific region of the screen
-    pub fn new() -> Self {
-        Self { data_scale: None }
-    }
-}
-impl Scale for ScaleYContinuous {
-    /// Extend scale by 10% to add a margin between data points and plot boundaries
-    fn fit(&mut self) -> Result<(), String> {
-        if let Some(s) = &self.data_scale {
-            self.data_scale = Some(s.scale(1.1));
-        }
-        Ok(())
-    }
-
-    /// Translate data values into relative ndc values for rendering position on screen
-    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
-        let values = v.as_f64()?;
-
-        if let Some(s) = &self.data_scale {
-            Ok(PlotParameter::UnitArray(
-                values
-                    .iter()
-                    .map(|v| Unit::NDC(s.map_position(&NDC_SCALE, *v) as f32))
-                    .collect(),
-            ))
-        } else {
-            Err("Scale is uninitialized".into())
-        }
-    }
-
-    /// Render y axis
-    fn render(&self) -> Vec<Element> {
+    fn render_y_axis(&self) -> Vec<Element> {
         let mut elements: Vec<Element> = vec![];
 
-        // draw primary line the full height of the allocated space
         let yaxis = Rectangle::new(
             [
                 Unit::NDC(NDC_SCALE.min as f32),
@@ -693,7 +558,6 @@ impl Scale for ScaleYContinuous {
         for tick_value in nice_ticks(s.min, s.max, 5) {
             let y_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
 
-            // tick mark: 6px wide, 1px tall
             let tick = Rectangle::new(
                 [Unit::NDC(NDC_SCALE.min as f32), Unit::NDC(y_ndc)],
                 Unit::Pixels(6),
@@ -702,7 +566,6 @@ impl Scale for ScaleYContinuous {
             );
             elements.push(Element::Shape(Box::new(tick)));
 
-            // label to the left of tick, positioned in the margin
             let label = if tick_value.fract() == 0.0 {
                 format!("{}", tick_value as i64)
             } else {
@@ -717,15 +580,45 @@ impl Scale for ScaleYContinuous {
 
         elements
     }
+}
 
-    /// The aesthetic family fo the scale
-    fn aesthetic_family(&self) -> Box<dyn AestheticFamily> {
-        Box::new(FamVPosition)
+impl Scale for ScalePositionContinuous {
+    fn fit(&mut self) -> Result<(), String> {
+        if let Some(s) = &self.data_scale {
+            self.data_scale = Some(s.scale(1.1));
+        }
+        Ok(())
     }
 
-    /// Append a set of values to the scale.
-    ///
-    /// Expands the min and max values of the scale if they don't
+    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
+        let values = v.as_f64()?;
+
+        if let Some(s) = &self.data_scale {
+            Ok(PlotParameter::UnitArray(
+                values
+                    .iter()
+                    .map(|v| Unit::NDC(s.map_position(&NDC_SCALE, *v) as f32))
+                    .collect(),
+            ))
+        } else {
+            Err("Scale is uninitialized".into())
+        }
+    }
+
+    fn render(&self) -> Vec<Element> {
+        match self.axis {
+            Axis::X => self.render_x_axis(),
+            Axis::Y => self.render_y_axis(),
+        }
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        match self.axis {
+            Axis::X => AestheticFamily::HorizontalPosition,
+            Axis::Y => AestheticFamily::VerticalPosition,
+        }
+    }
+
     fn append(&mut self, v: &PlotParameter) -> Result<(), String> {
         let new_scale = ContinuousNumericScale::from_vec(&v.as_f64()?);
         if let Some(s) = &self.data_scale {
@@ -816,11 +709,11 @@ impl PlotData {
 
 /// For a layer, MappedData is parsed to specific aesthetics for a plot
 pub struct MappedData {
-    data: Vec<(Rc<dyn Aesthetic>, PlotParameter)>,
+    data: Vec<(Aesthetic, PlotParameter)>,
 }
 impl MappedData {
-    fn aesthetics(&self) -> Vec<Rc<dyn Aesthetic>> {
-        self.data.iter().map(|(aes, _)| aes).cloned().collect()
+    fn aesthetics(&self) -> Vec<Aesthetic> {
+        self.data.iter().map(|(aes, _)| *aes).collect()
     }
 }
 
@@ -833,13 +726,16 @@ mod test {
         let theme = Theme::default();
         let layer = Layer::new(
             Box::new(GeomPoint {}),
-            vec![Mapping::X("x".into()), Mapping::Y("y".into())],
+            vec![
+                Mapping { aesthetic: Aesthetic::X, variable: "x".into() },
+                Mapping { aesthetic: Aesthetic::Y, variable: "y".into() },
+            ],
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
         let _bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_scale(Box::new(ScaleXContinuous::new()))
-            .with_scale(Box::new(ScaleYContinuous::new()));
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
     }
 }

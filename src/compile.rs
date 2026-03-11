@@ -1,7 +1,7 @@
 use crate::ast::{AstAesthetic, GeometryType, Program, Statement};
 use crate::plot::{
-    Blueprint, GeomPoint, IdentityTransform, Layer, Mapping, ScaleXContinuous, ScaleYContinuous,
-    Theme,
+    Aesthetic, Axis, Blueprint, GeomPoint, IdentityTransform, Layer, Mapping,
+    ScalePositionContinuous, Theme,
 };
 
 pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
@@ -14,17 +14,20 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
         match stmt {
             Statement::Map(data_mappings) => {
                 for dm in data_mappings {
-                    let mapping = match dm.aesthetic {
+                    let aesthetic = match dm.aesthetic {
                         AstAesthetic::X => {
                             has_x = true;
-                            Mapping::X(dm.column.clone())
+                            Aesthetic::X
                         }
                         AstAesthetic::Y => {
                             has_y = true;
-                            Mapping::Y(dm.column.clone())
+                            Aesthetic::Y
                         }
                     };
-                    mappings.push(mapping);
+                    mappings.push(Mapping {
+                        aesthetic,
+                        variable: dm.column.clone(),
+                    });
                 }
             }
             Statement::Geom(geom_type) => match geom_type {
@@ -48,10 +51,10 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
         bp = bp.with_mapping(m);
     }
     if has_x {
-        bp = bp.with_scale(Box::new(ScaleXContinuous::new()));
+        bp = bp.with_scale(Box::new(ScalePositionContinuous::new(Axis::X)));
     }
     if has_y {
-        bp = bp.with_scale(Box::new(ScaleYContinuous::new()));
+        bp = bp.with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
     }
 
     Ok(bp)

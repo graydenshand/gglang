@@ -121,15 +121,15 @@ A different example is a discrete color scale, which maps each distinct value fo
 
 **Scales** are shared across all **Layers**; this ensures a single visual channel is consistenty mapped over the entire plot.
 
-The **Scales** `ScaleXContinuous`, `ScaleLogXContinuous` and `ScaleXDiscrete` all control the horizontal positioning of plot elements. They all represent the same **MappingFamily**, and thus they are mutually exclusive.
+The **Scales** `ScalePositionContinuous(Axis::X)`, `ScaleLogXContinuous` and `ScaleXDiscrete` all control the horizontal positioning of plot elements. They all belong to the same **AestheticFamily** (`HorizontalPosition`), and thus they are mutually exclusive.
 
 **Scale** transformations are applied first in the rendering pipeline. Then, each layer is given a copy of the transformed and mapped data for further transformation. After running transformations for a layer, the plot's scales are updated based on the data.
 
 Finally, the layer uses the scale to map values from data space to visual space. This must be owned by the layer because some stat transforms change the values that need to be mapped -- e.g. geom_bar adds `width` and `height` **Mappings** which are ultimately mapped to the x and y axis sales.
 
-For each **Mapping** that it needs to map, the **Layer** will scan the plot's **Scales** until it finds a scale in the **ScaleFamily** for that aesthetic.
+For each **Mapping** that it needs to map, the **Layer** will scan the plot's **Scales** until it finds a scale in the **AestheticFamily** for that aesthetic.
 
-ScaleFamily examples:
+AestheticFamily examples:
 * horizontal position (x continuous, x discrete, log x)
 * vertical position
 * color
@@ -142,23 +142,23 @@ classDiagram
         fit(values)
         map(values)
         render()
-        scale_family()
+        aesthetic_family()
         transform(data)
     }
 
-    class ScaleFamily {}
+    class AestheticFamily {}
 
     class Geometry {
         render(scales)
     }
 
     class Aesthetic {
-        scale_family()
+        aesthetic_family()
     }
 
     Geometry --> Aesthetic
-    Aesthetic --> ScaleFamily
-    Scale --> ScaleFamily
+    Aesthetic --> AestheticFamily
+    Scale --> AestheticFamily
 
     Layer --> Geometry
 ```

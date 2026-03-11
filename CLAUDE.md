@@ -21,7 +21,7 @@ The renderer can display a hardcoded scatterplot (4 data points, `GeomPoint`, X/
 | `src/bin/plot.rs` | Renderer binary — launches wgpu window |
 | `src/app.rs` | wgpu window, surface, event loop, `AppState` |
 | `src/frame.rs` | Bridges `Blueprint` to GPU — vertex/index buffers, text queuing. Contains **hardcoded demo data** (lines 42-64) |
-| `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`, `PlotData`, `Theme` |
+| `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`/`AestheticFamily` enums, `ScalePositionContinuous`, `PlotData`, `Theme` |
 | `src/shape.rs` | GPU primitives: `Vertex`, `Unit` enum, `WindowSegment`, `Shape` trait, `Rectangle`, `Text`, `Element` enum |
 | `src/transform.rs` | `ContinuousNumericScale` — linear interpolation between ranges |
 | `src/layout.rs` | Non-compiling stub — future layout tree |
@@ -67,13 +67,13 @@ Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; g
 
 - **Theme is borrowed, not owned** by `Blueprint` — themes affect things beyond the plot scope (window margin, background) and may be shared across multiple plots.
 - **`Element` enum** (`Shape | Text`) unifies geometry and text at the render boundary — the right choice over a combined `Shape` trait with a `text()` method.
-- **`Mapping` is currently `enum { X(String), Y(String) }`** — needs to be generalized to support all aesthetics (see `proj/issue-scale-generalization.md`).
+- **`Mapping` is a struct** `{ aesthetic: Aesthetic, variable: String }` — extensible to any aesthetic channel. `Aesthetic` and `AestheticFamily` are enums, not traits.
 
 ## Issues and project planning
 
 Open architectural issues are in `proj/`:
 - `issue-ast-bridge.md` — connecting parser to renderer (highest priority)
-- `issue-scale-generalization.md` — eliminating scale duplication
+- `issue-scale-generalization.md` — ~~eliminating scale duplication~~ (done: unified into `ScalePositionContinuous`, enums replace traits)
 - `issue-layout-tree.md` — tree-based layout for axes/legends/facets
 - `issue-render-backend-abstraction.md` — decoupling geom logic from wgpu
 - `issue-plotdata-typing.md` — stronger typing through the data pipeline

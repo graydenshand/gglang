@@ -2,7 +2,7 @@
 
 ## Tier 1 — Expand the grammar of graphics
 
-1. **Scale generalization** (`issues/issue-scale-generalization.md`) — Eliminate X/Y scale duplication; generalize `Mapping` to support all aesthetics. Prerequisite for color, shape, and size.
+1. ~~**Scale generalization**~~ (`issues/issue-scale-generalization.md`) — ✅ Done. Unified `ScaleXContinuous`/`ScaleYContinuous` into `ScalePositionContinuous`; `Aesthetic`, `AestheticFamily`, `Mapping` are now enums/structs instead of traits.
 
 2. **Segmenting scatterplots** (`stories/segmenting_scatterplots.md`) — Color and shape aesthetics on `GEOM POINT`, discrete scales, legends. Depends on scale generalization.
 
