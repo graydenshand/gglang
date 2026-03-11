@@ -11,7 +11,7 @@ A ggplot2-inspired statistical graphics engine written in Rust, using wgpu for G
 
 ## Current state
 
-The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu. Supported features: `GeomPoint` with X/Y continuous scales, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels. CSV loading auto-detects numeric vs. string columns.
+The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu. Supported features: `GeomPoint` and `GeomLine` with X/Y continuous scales, `group` aesthetic for partitioning line series, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels. CSV loading auto-detects numeric vs. string columns.
 
 ## Module map
 
@@ -25,8 +25,8 @@ The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CS
 | `src/data.rs` | CSV loader — auto-detects numeric (`FloatArray`) vs. string (`StringArray`) columns |
 | `src/app.rs` | wgpu window, surface, event loop, `AppState` |
 | `src/frame.rs` | Bridges `Blueprint` to GPU — vertex/index buffers, text queuing |
-| `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`/`AestheticFamily` enums, `ScalePositionContinuous`, `ScaleColorDiscrete`, `PlotData`, `Theme` |
-| `src/shape.rs` | GPU primitives: `Vertex`, `Unit` enum, `WindowSegment`, `Shape` trait, `Rectangle`, `Text`, `Element` enum |
+| `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`/`AestheticFamily` enums, `ScalePositionContinuous`, `ScaleColorDiscrete`, `GeomPoint`, `GeomLine`, `PlotData`, `Theme` |
+| `src/shape.rs` | GPU primitives: `Vertex`, `Unit` enum, `WindowSegment`, `Shape` trait, `Rectangle`, `LineSegment`, `Text`, `Element` enum |
 | `src/transform.rs` | `ContinuousNumericScale` — linear interpolation between ranges |
 | `src/layout.rs` | Non-compiling stub — future layout tree |
 | `src/shader.wgsl` | Pass-through WGSL vertex + fragment shaders |
@@ -59,6 +59,9 @@ MAP x=:year, y=:sales              // default mappings
 GEOM POINT                         // layer with default mappings
 MAP x=:year, y=:sales, color=:region  // with color segmentation
 GEOM POINT
+
+MAP x=:day, y=:price, group=:ticker, color=:ticker
+GEOM LINE                          // timeseries line plot
 
 SCALE X_CONTINUOUS
 FACET BY :store

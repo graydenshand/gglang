@@ -31,11 +31,13 @@ pub enum AstAesthetic {
     X,
     Y,
     Color,
+    Group,
 }
 
 #[derive(Debug)]
 pub enum GeometryType {
     Point,
+    Line,
 }
 
 pub fn parse(source: &str) -> Result<Program, String> {
@@ -69,6 +71,7 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                             "x" => AstAesthetic::X,
                                             "y" => AstAesthetic::Y,
                                             "color" => AstAesthetic::Color,
+                                            "group" => AstAesthetic::Group,
                                             other => {
                                                 return Err(format!(
                                                     "Unsupported aesthetic: {}",
@@ -89,6 +92,9 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                 match pair.as_str() {
                                     "POINT" => {
                                         statements.push(Statement::Geom(GeometryType::Point))
+                                    }
+                                    "LINE" => {
+                                        statements.push(Statement::Geom(GeometryType::Line))
                                     }
                                     other => {
                                         return Err(format!("Unsupported geometry: {}", other))
@@ -165,6 +171,31 @@ mod tests {
                 assert!(matches!(mappings[2].aesthetic, AstAesthetic::Color));
             }
             _ => panic!("Expected Map statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_geom_line_with_group() {
+        let source = "MAP x=:day, y=:price, group=:ticker\nGEOM LINE";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 2);
+
+        match &program.statements[0] {
+            Statement::Map(mappings) => {
+                assert_eq!(mappings.len(), 3);
+                assert_eq!(mappings[0].column, "day");
+                assert!(matches!(mappings[0].aesthetic, AstAesthetic::X));
+                assert_eq!(mappings[1].column, "price");
+                assert!(matches!(mappings[1].aesthetic, AstAesthetic::Y));
+                assert_eq!(mappings[2].column, "ticker");
+                assert!(matches!(mappings[2].aesthetic, AstAesthetic::Group));
+            }
+            _ => panic!("Expected Map statement"),
+        }
+
+        match &program.statements[1] {
+            Statement::Geom(GeometryType::Line) => {}
+            _ => panic!("Expected Geom Line statement"),
         }
     }
 

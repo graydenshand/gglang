@@ -1,0 +1,5 @@
+MAP x=:day, y=:price, group=:ticker, color=:ticker
+GEOM LINE
+TITLE "Stock Prices"
+XLABEL "Day"
+YLABEL "Price"

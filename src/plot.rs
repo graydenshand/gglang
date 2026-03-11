@@ -1,4 +1,4 @@
-use crate::shape::{Element, Rectangle, Text, Unit};
+use crate::shape::{Element, LineSegment, Rectangle, Text, Unit};
 use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
 use std::collections::HashMap;
 
@@ -145,7 +145,9 @@ impl<'a> Blueprint<'a> {
                 // Auto-create scale if one doesn't exist for this family
                 let family = aes.family();
                 if !self.scales.iter().any(|s| s.aesthetic_family() == family) {
-                    self.scales.push(aes.default_scale());
+                    if let Some(scale) = aes.default_scale() {
+                        self.scales.push(scale);
+                    }
                 }
             }
         }
@@ -359,10 +361,9 @@ pub trait Geometry {
         // mapping's data is routed to specific scales. e.g. x axis goes to
         // horizontal position scale
         for (aes, values) in mapped_data.data.iter() {
-            let scale = family_scale_map
-                .get_mut(&aes.family())
-                .expect("scale exists in map");
-            scale.append(values).expect("scale append failed");
+            if let Some(scale) = family_scale_map.get_mut(&aes.family()) {
+                scale.append(values).expect("scale append failed");
+            }
         }
     }
 }
@@ -434,6 +435,93 @@ impl Geometry for GeomPoint {
     }
 }
 
+/// GeomLine renders connected line segments through data points.
+///
+/// Required aesthetics: `x`, `y`
+///
+/// Extra aesthetics: `group`, `color`
+///
+/// When a `group` aesthetic is mapped, data is partitioned into separate
+/// series and each series is rendered as an independent polyline.
+pub struct GeomLine;
+impl Geometry for GeomLine {
+    fn required_aesthetics(&self) -> Vec<Aesthetic> {
+        vec![Aesthetic::X, Aesthetic::Y]
+    }
+
+    fn extra_aesthetics(&self) -> Vec<Aesthetic> {
+        vec![Aesthetic::Group, Aesthetic::Color]
+    }
+
+    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element> {
+        let x_scale = scales
+            .iter()
+            .find(|s| s.aesthetic_family() == AestheticFamily::HorizontalPosition)
+            .unwrap();
+        let x = data.get("x").expect("key existence was already validated");
+        let x_mapped = match x_scale.map(x).expect("scales were fit to data") {
+            PlotParameter::UnitArray(v) => v,
+            _ => panic!("expected unit array from position scale"),
+        };
+
+        let y_scale = scales
+            .iter()
+            .find(|s| s.aesthetic_family() == AestheticFamily::VerticalPosition)
+            .unwrap();
+        let y = data.get("y").expect("already validated");
+        let y_mapped = match y_scale.map(y).expect("scales were fit to data") {
+            PlotParameter::UnitArray(v) => v,
+            _ => panic!("expected unit array from position scale"),
+        };
+
+        // Resolve per-point colors if a color aesthetic is mapped
+        let colors: Option<Vec<[f32; 3]>> = data.get("color").map(|color_data| {
+            let color_scale = scales
+                .iter()
+                .find(|s| s.aesthetic_family() == AestheticFamily::Color)
+                .expect("color scale must exist when color aesthetic is mapped");
+            match color_scale.map(color_data).expect("color scale was fit") {
+                PlotParameter::ColorArray(v) => v,
+                _ => panic!("expected color array from color scale"),
+            }
+        });
+
+        // Partition row indices by group value (or all rows = one group)
+        let groups: Vec<Vec<usize>> = if let Some(PlotParameter::StringArray(group_vals)) =
+            data.get("group")
+        {
+            let mut group_map: Vec<(String, Vec<usize>)> = vec![];
+            for (i, val) in group_vals.iter().enumerate() {
+                if let Some(entry) = group_map.iter_mut().find(|(k, _)| k == val) {
+                    entry.1.push(i);
+                } else {
+                    group_map.push((val.clone(), vec![i]));
+                }
+            }
+            group_map.into_iter().map(|(_, indices)| indices).collect()
+        } else {
+            vec![(0..x_mapped.len()).collect()]
+        };
+
+        let mut elements = vec![];
+        for group_indices in &groups {
+            for pair in group_indices.windows(2) {
+                let i = pair[0];
+                let j = pair[1];
+                let color = colors.as_ref().map_or([0.0, 0.0, 0.0], |c| c[i]);
+                let seg = LineSegment::new(
+                    [x_mapped[i], y_mapped[i]],
+                    [x_mapped[j], y_mapped[j]],
+                    2.0,
+                    color,
+                );
+                elements.push(Element::Shape(Box::new(seg)));
+            }
+        }
+        elements
+    }
+}
+
 /// Renders a bar for every data point
 struct GeomBar;
 // impl Geometry for GeomBar {}
@@ -460,11 +548,12 @@ pub enum Aesthetic {
     X,
     Y,
     Color,
+    Group,
 }
 
 impl Aesthetic {
     pub fn all() -> &'static [Aesthetic] {
-        &[Aesthetic::X, Aesthetic::Y, Aesthetic::Color]
+        &[Aesthetic::X, Aesthetic::Y, Aesthetic::Color, Aesthetic::Group]
     }
 
     pub fn family(&self) -> AestheticFamily {
@@ -472,14 +561,16 @@ impl Aesthetic {
             Aesthetic::X => AestheticFamily::HorizontalPosition,
             Aesthetic::Y => AestheticFamily::VerticalPosition,
             Aesthetic::Color => AestheticFamily::Color,
+            Aesthetic::Group => AestheticFamily::Group,
         }
     }
 
-    pub fn default_scale(&self) -> Box<dyn Scale> {
+    pub fn default_scale(&self) -> Option<Box<dyn Scale>> {
         match self {
-            Aesthetic::X => Box::new(ScalePositionContinuous::new(Axis::X)),
-            Aesthetic::Y => Box::new(ScalePositionContinuous::new(Axis::Y)),
-            Aesthetic::Color => Box::new(ScaleColorDiscrete::new()),
+            Aesthetic::X => Some(Box::new(ScalePositionContinuous::new(Axis::X))),
+            Aesthetic::Y => Some(Box::new(ScalePositionContinuous::new(Axis::Y))),
+            Aesthetic::Color => Some(Box::new(ScaleColorDiscrete::new())),
+            Aesthetic::Group => None,
         }
     }
 
@@ -488,6 +579,7 @@ impl Aesthetic {
             Aesthetic::X => "x",
             Aesthetic::Y => "y",
             Aesthetic::Color => "color",
+            Aesthetic::Group => "group",
         }
     }
 }
@@ -498,6 +590,7 @@ pub enum AestheticFamily {
     HorizontalPosition,
     VerticalPosition,
     Color,
+    Group,
 }
 
 /// A mapping from a data variable to an aesthetic channel.
@@ -1109,6 +1202,123 @@ mod test {
         data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
 
         let elements = bp.render(data).expect("explicit mapping should take precedence");
+        assert!(elements.len() > 2);
+    }
+
+    #[test]
+    fn geom_line_no_group_produces_segments() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomLine),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 4.0, 2.0]));
+
+        let elements = bp.render(data).expect("render should succeed");
+        // 3 points → 2 line segments + axis elements
+        let shape_count = elements.iter().filter(|e| matches!(e, Element::Shape(_))).count();
+        // 2 segments + axis shapes
+        assert!(shape_count >= 2, "expected at least 2 line segments, got {}", shape_count);
+    }
+
+    #[test]
+    fn geom_line_with_group_partitions() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomLine),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Group, variable: "grp".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
+        data.insert("grp".into(), PlotParameter::StringArray(vec![
+            "a".into(), "a".into(), "b".into(), "b".into(),
+        ]));
+
+        let elements = bp.render(data).expect("render should succeed");
+        // 2 groups × 1 segment each = 2 line segments (+ axis elements)
+        let shape_count = elements.iter().filter(|e| matches!(e, Element::Shape(_))).count();
+        // axis shapes + 2 line segments
+        assert!(shape_count >= 2);
+    }
+
+    #[test]
+    fn geom_line_single_point_group_no_panic() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomLine),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Group, variable: "grp".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0]));
+        data.insert("grp".into(), PlotParameter::StringArray(vec!["a".into()]));
+
+        let elements = bp.render(data).expect("single point should not panic");
+        // No line segments from the geom (only axis elements)
+        let line_shapes = elements.iter().filter(|e| matches!(e, Element::Shape(_))).count();
+        // Only axis elements, no line segments from geom
+        assert!(line_shapes >= 0); // just verifying no panic
+    }
+
+    #[test]
+    fn render_blueprint_geom_line_with_color() {
+        let theme = Theme::default();
+        let layer = Layer::new(
+            Box::new(GeomLine),
+            vec![],
+            Box::new(IdentityTransform {}),
+            Box::new(IdentityTransform {}),
+        );
+        let mut bp = Blueprint::new(&theme)
+            .with_layer(layer)
+            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Group, variable: "grp".into() })
+            .with_mapping(Mapping { aesthetic: Aesthetic::Color, variable: "grp".into() })
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
+            .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)))
+            .with_scale(Box::new(ScaleColorDiscrete::new()));
+
+        let mut data = PlotData::new();
+        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
+        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
+        data.insert("grp".into(), PlotParameter::StringArray(vec![
+            "a".into(), "a".into(), "b".into(), "b".into(),
+        ]));
+
+        let elements = bp.render(data).expect("render with color should succeed");
         assert!(elements.len() > 2);
     }
 

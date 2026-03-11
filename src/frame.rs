@@ -52,6 +52,9 @@ impl Frame {
                 Element::Shape(s) => {
                     let base_index = vertices.len();
                     let shape_vertices = s.vertices(&window_segment);
+                    if shape_vertices.is_empty() {
+                        continue;
+                    }
 
                     vertices.extend_from_slice(&shape_vertices);
                     indices.extend(s.indices().iter().map(|idx| idx + base_index as u16));

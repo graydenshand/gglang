@@ -23,6 +23,9 @@ GQL is a language based on the ggplot2 API and the grammar of graphics.
 ```
 MAP x=:x, y=:y
 GEOM POINT
+
+MAP x=:day, y=:price, group=:ticker, color=:ticker
+GEOM LINE
 ```
 
 

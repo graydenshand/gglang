@@ -8,7 +8,7 @@
 
 ## Tier 2 — New geom types and deeper architecture
 
-3. **Timeseries traces** (`stories/timeseries_traces.md`) — `GEOM LINE` with `group` aesthetic.
+3. ~~**Timeseries traces**~~ (`stories/timeseries_traces.md`) — ✅ Done. `GeomLine` with `group` aesthetic for partitioning series, `LineSegment` shape primitive, `Aesthetic::Group` / `AestheticFamily::Group` (no scale — partitions only). Works with `color` aesthetic for per-group coloring.
 
 4. **Layout tree** (`issues/issue-layout-tree.md`) — Proper axis gutters, legend regions, faceting. Currently hacked with out-of-bounds NDC coordinates. Becomes urgent when legends arrive.
 

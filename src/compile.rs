@@ -1,6 +1,6 @@
 use crate::ast::{AstAesthetic, GeometryType, Program, Statement};
 use crate::plot::{
-    Aesthetic, Blueprint, GeomPoint, IdentityTransform, Layer, Mapping, Theme,
+    Aesthetic, Blueprint, GeomLine, GeomPoint, IdentityTransform, Layer, Mapping, Theme,
 };
 
 pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
@@ -16,6 +16,7 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                         AstAesthetic::X => Aesthetic::X,
                         AstAesthetic::Y => Aesthetic::Y,
                         AstAesthetic::Color => Aesthetic::Color,
+                        AstAesthetic::Group => Aesthetic::Group,
                     };
                     mapped_aesthetics.push(aesthetic);
                     mappings.push(Mapping {
@@ -28,6 +29,14 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                 GeometryType::Point => {
                     bp = bp.with_layer(Layer::new(
                         Box::new(GeomPoint),
+                        mappings.clone(),
+                        Box::new(IdentityTransform),
+                        Box::new(IdentityTransform),
+                    ));
+                }
+                GeometryType::Line => {
+                    bp = bp.with_layer(Layer::new(
+                        Box::new(GeomLine),
                         mappings.clone(),
                         Box::new(IdentityTransform),
                         Box::new(IdentityTransform),
@@ -47,7 +56,9 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     for aes in &mapped_aesthetics {
         let family = aes.family();
         if !bp.has_scale_for_family(family) {
-            bp = bp.with_scale(aes.default_scale());
+            if let Some(scale) = aes.default_scale() {
+                bp = bp.with_scale(scale);
+            }
         }
     }
 

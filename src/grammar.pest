@@ -28,12 +28,12 @@ ylabel_statement = { "YLABEL" ~ string_literal }
 map_statement = { "MAP" ~ data_mappings }
 data_mappings = { data_mapping ~ ("," ~ data_mapping)* }
 data_mapping = { aesthetic ~ "=" ~ data_reference }
-aesthetic = { "x" | "y" | "color" }
+aesthetic = { "x" | "y" | "color" | "group" }
 data_reference = { ":" ~ identifier }
 
 // Geometry Statement
 geom_statement = { "GEOM" ~ geometry_type }
-geometry_type = { "POINT" }
+geometry_type = { "POINT" | "LINE" }
 
 // Basic Data Types
 string_literal = @{ "\"" ~ string_character* ~ "\"" }

@@ -352,6 +352,57 @@ impl Text {
     }
 }
 
+pub struct LineSegment {
+    start: [Unit; 2],
+    end: [Unit; 2],
+    thickness: f32,
+    color: [f32; 3],
+}
+impl LineSegment {
+    pub fn new(start: [Unit; 2], end: [Unit; 2], thickness: f32, color: [f32; 3]) -> Self {
+        Self {
+            start,
+            end,
+            thickness,
+            color,
+        }
+    }
+}
+impl Shape for LineSegment {
+    fn vertices(&self, segment: &WindowSegment) -> Vec<Vertex> {
+        let x0 = segment.abs_x(&self.start[0]);
+        let y0 = segment.abs_y(&self.start[1]);
+        let x1 = segment.abs_x(&self.end[0]);
+        let y1 = segment.abs_y(&self.end[1]);
+
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len == 0.0 {
+            return vec![];
+        }
+
+        // Perpendicular offset scaled by half-thickness in each axis
+        let nx = -dy / len;
+        let ny = dx / len;
+        let half_w = segment.abs_width(&Unit::Pixels(self.thickness as u32)) / 2.0;
+        let half_h = segment.abs_height(&Unit::Pixels(self.thickness as u32)) / 2.0;
+        let ox = nx * half_w;
+        let oy = ny * half_h;
+
+        vec![
+            Vertex { position: [x0 + ox, y0 + oy, 0.0], color: self.color },
+            Vertex { position: [x0 - ox, y0 - oy, 0.0], color: self.color },
+            Vertex { position: [x1 - ox, y1 - oy, 0.0], color: self.color },
+            Vertex { position: [x1 + ox, y1 + oy, 0.0], color: self.color },
+        ]
+    }
+
+    fn indices(&self) -> &[u16] {
+        &[0, 1, 2, 0, 2, 3]
+    }
+}
+
 /// An element can either be a Shape or a TextSection
 pub enum Element {
     Shape(Box<dyn Shape>),
