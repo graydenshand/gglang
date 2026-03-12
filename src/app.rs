@@ -15,7 +15,7 @@ use winit::{
     window::Window,
 };
 
-use crate::frame::ortho_rotated_ccw;
+use crate::frame::{ortho_rotated_ccw, ViewUniform};
 use wgpu_text::{BrushBuilder, TextBrush};
 
 #[cfg(target_arch = "wasm32")]
@@ -33,6 +33,7 @@ pub struct AppState<'a> {
     brush_rotated: TextBrush<FontRef<'a>>,
     plot_output: PlotOutput,
     theme: Theme,
+    view_uniform: ViewUniform,
 }
 
 impl AppState<'_> {
@@ -122,6 +123,7 @@ impl AppState<'_> {
             brush_rotated,
             plot_output,
             theme,
+            view_uniform: ViewUniform::identity(),
         })
     }
 
@@ -150,6 +152,7 @@ impl AppState<'_> {
             &mut self.brush_rotated,
             &self.plot_output,
             &self.theme,
+            self.view_uniform,
         );
         self.frame = Some(frame);
     }

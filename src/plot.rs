@@ -1,5 +1,5 @@
 use crate::layout::{LayoutNode, PlotOutput, PlotRegion, SizeSpec, SplitAxis, Unit};
-use crate::shape::{Element, LineSegment, Rectangle, Text, VAlign};
+use crate::shape::{Element, PolylineData, PointData, Rectangle, Text, VAlign};
 use crate::theme::Theme;
 use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
 use std::collections::HashMap;
@@ -450,14 +450,16 @@ impl Geometry for GeomPoint {
         });
 
         for i in 0..x.len() {
-            let color = colors.as_ref().map_or([0.0, 0.0, 0.0], |c| c[i]);
-            let r = Rectangle::new(
-                [x_mapped[i], y_mapped[i]],
-                Unit::Pixels(16),
-                Unit::Pixels(16),
+            let color = colors.as_ref().map_or([0.0, 0.0, 0.0, 1.0], |c| {
+                let rgb = c[i];
+                [rgb[0], rgb[1], rgb[2], 1.0]
+            });
+            let p = PointData {
+                position: [x_mapped[i], y_mapped[i]],
+                size: Unit::Pixels(16),
                 color,
-            );
-            points.push(Element::Shape(Box::new(r)));
+            };
+            points.push(Element::Point(p));
         }
         points
     }
@@ -515,6 +517,7 @@ impl Geometry for GeomLine {
         });
 
         // Partition row indices by group value (or all rows = one group)
+
         let groups: Vec<Vec<usize>> =
             if let Some(PlotParameter::StringArray(group_vals)) = data.get("group") {
                 let mut group_map: Vec<(String, Vec<usize>)> = vec![];
@@ -532,18 +535,27 @@ impl Geometry for GeomLine {
 
         let mut elements = vec![];
         for group_indices in &groups {
-            for pair in group_indices.windows(2) {
-                let i = pair[0];
-                let j = pair[1];
-                let color = colors.as_ref().map_or([0.0, 0.0, 0.0], |c| c[i]);
-                let seg = LineSegment::new(
-                    [x_mapped[i], y_mapped[i]],
-                    [x_mapped[j], y_mapped[j]],
-                    2.0,
-                    color,
-                );
-                elements.push(Element::Shape(Box::new(seg)));
+            if group_indices.len() < 2 {
+                continue;
             }
+            let points: Vec<[Unit; 2]> = group_indices
+                .iter()
+                .map(|&i| [x_mapped[i], y_mapped[i]])
+                .collect();
+            let point_colors: Vec<[f32; 4]> = group_indices
+                .iter()
+                .map(|&i| {
+                    colors.as_ref().map_or([0.0, 0.0, 0.0, 1.0], |c| {
+                        let rgb = c[i];
+                        [rgb[0], rgb[1], rgb[2], 1.0]
+                    })
+                })
+                .collect();
+            elements.push(Element::Polyline(PolylineData {
+                points,
+                thickness: 3.0,
+                colors: point_colors,
+            }));
         }
         elements
     }
@@ -691,7 +703,7 @@ impl ScalePositionContinuous {
             [Unit::NDC(0.0), Unit::NDC(1.0)],
             Unit::NDC(2.0),
             Unit::Pixels(1),
-            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
         );
         elements.push(Element::Shape(Box::new(xaxis)));
 
@@ -704,7 +716,7 @@ impl ScalePositionContinuous {
                 [Unit::NDC(x_ndc), Unit::NDC(1.0)],
                 Unit::Pixels(1),
                 Unit::Pixels(6),
-                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
             );
             elements.push(Element::Shape(Box::new(tick)));
 
@@ -732,7 +744,7 @@ impl ScalePositionContinuous {
             [Unit::NDC(1.0), Unit::NDC(0.0)],
             Unit::Pixels(1),
             Unit::NDC(2.0),
-            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
         );
         elements.push(Element::Shape(Box::new(yaxis)));
 
@@ -745,7 +757,7 @@ impl ScalePositionContinuous {
                 [Unit::NDC(1.0), Unit::NDC(y_ndc)],
                 Unit::Pixels(6),
                 Unit::Pixels(1),
-                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
             );
             elements.push(Element::Shape(Box::new(tick)));
 
@@ -903,11 +915,12 @@ impl Scale for ScaleColorDiscrete {
 
         for (i, cat) in self.categories.iter().enumerate() {
             let y = y_start - (i as f32 * spacing);
+            let [r, g, b] = self.palette[i];
             let swatch = Rectangle::new(
                 [Unit::Percent(10.0), Unit::NDC(y)],
                 Unit::Pixels(14),
                 Unit::Pixels(14),
-                self.palette[i],
+                [r, g, b, 1.0],
             );
             elements.push(Element::Shape(Box::new(swatch)));
             elements.push(Element::Text(

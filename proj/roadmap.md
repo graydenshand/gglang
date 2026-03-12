@@ -14,7 +14,7 @@
 
 ## Tier 3 — Performance and polish (defer)
 
-5. **Shader architecture** (`issues/issue-shader-architecture.md`) — View transform uniform, GPU instancing, SDF point rendering. Defer until data pipeline is solid.
+5. ~~**Shader architecture**~~ (`issues/issue-shader-architecture.md`) — ✅ Done. View transform uniform (identity, unblocks future pan/zoom). GPU instancing for `GeomPoint` (shared quad + per-point instance buffer, SDF anti-aliased circles). Miter-join polyline rendering for `GeomLine` (CPU-tessellated triangle strips with per-vertex edge distance, `fwidth()`-based AA). Three separate render pipelines: general (rectangles/axes/ticks), point (instanced SDF circles), line (tessellated polylines). Alpha blending enabled on all pipelines.
 
 6. **Render backend abstraction** (`issues/issue-render-backend-abstraction.md`) — SVG/PNG export, testability without a GPU device.
 

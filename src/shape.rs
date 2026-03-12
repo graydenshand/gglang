@@ -9,7 +9,7 @@ use crate::transform::ContinuousNumericScale;
 pub struct Vertex {
     /// The position of the vertex (x,y,z)
     position: [f32; 3],
-    color: [f32; 3],
+    color: [f32; 4],
 }
 impl Vertex {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -25,7 +25,7 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x3,
+                    format: wgpu::VertexFormat::Float32x4,
                 },
             ],
         }
@@ -44,7 +44,7 @@ pub trait Shape {
     fn vertices(&self, segment: &WindowSegment) -> Vec<Vertex>;
 
     /// Indices of vertex triplets for drawing triangles
-    fn indices(&self) -> &[u16];
+    fn indices(&self) -> &[u32];
 }
 
 pub struct Rectangle {
@@ -53,8 +53,8 @@ pub struct Rectangle {
     /// Dimensions of the rectangle either in relative NDC units or in Pixels
     width: Unit,
     height: Unit,
-    /// Rectangle fill color
-    color: [f32; 3],
+    /// Rectangle fill color (RGBA)
+    color: [f32; 4],
 }
 impl Rectangle {
     /// Create a new rectangle
@@ -63,8 +63,8 @@ impl Rectangle {
     /// - position: X,Y position of center of the rectangle
     /// - width: The width of the rectange
     /// - height: The height of the rectange
-    /// - color: The fill color of the rectangles
-    pub fn new(position: [Unit; 2], width: Unit, height: Unit, color: [f32; 3]) -> Self {
+    /// - color: The fill color of the rectangles (RGBA)
+    pub fn new(position: [Unit; 2], width: Unit, height: Unit, color: [f32; 4]) -> Self {
         Self {
             position,
             width,
@@ -125,7 +125,7 @@ impl Shape for Rectangle {
         vertices
     }
 
-    fn indices(&self) -> &[u16] {
+    fn indices(&self) -> &[u32] {
         &[0, 1, 2, 0, 2, 3]
     }
 }
@@ -273,59 +273,127 @@ impl Text {
 
 }
 
-pub struct LineSegment {
-    start: [Unit; 2],
-    end: [Unit; 2],
-    thickness: f32,
-    color: [f32; 3],
+/// Domain-level polyline data — one per group/series, tessellated in Frame.
+pub struct PolylineData {
+    pub points: Vec<[Unit; 2]>,
+    pub thickness: f32, // pixels
+    pub colors: Vec<[f32; 4]>, // per-point RGBA
 }
-impl LineSegment {
-    pub fn new(start: [Unit; 2], end: [Unit; 2], thickness: f32, color: [f32; 3]) -> Self {
-        Self {
-            start,
-            end,
-            thickness,
-            color,
+
+/// GPU vertex for tessellated polyline triangle strips.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LineVertex {
+    pub position: [f32; 2],
+    pub color: [f32; 4],
+    pub edge_dist: f32,
+}
+impl LineVertex {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<LineVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() + std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32,
+                },
+            ],
         }
     }
 }
-impl Shape for LineSegment {
-    fn vertices(&self, segment: &WindowSegment) -> Vec<Vertex> {
-        let x0 = segment.abs_x(&self.start[0]);
-        let y0 = segment.abs_y(&self.start[1]);
-        let x1 = segment.abs_x(&self.end[0]);
-        let y1 = segment.abs_y(&self.end[1]);
 
-        let dx = x1 - x0;
-        let dy = y1 - y0;
-        let len = (dx * dx + dy * dy).sqrt();
-        if len == 0.0 {
-            return vec![];
+/// Domain-level point data — position, size, and color in layout-relative units.
+/// Converted to GPU instances in Frame.
+pub struct PointData {
+    pub position: [Unit; 2],
+    pub size: Unit,
+    pub color: [f32; 4],
+}
+
+/// A single quad vertex for the shared point quad (4 vertices drawn N times).
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct QuadVertex {
+    /// Offset from center in [-1, 1] space; multiplied by half_size on GPU
+    pub offset: [f32; 2],
+    /// UV coordinates [0, 1] for SDF circle computation
+    pub uv: [f32; 2],
+}
+impl QuadVertex {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<QuadVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
         }
-
-        // Perpendicular offset scaled by half-thickness in each axis
-        let nx = -dy / len;
-        let ny = dx / len;
-        let half_w = segment.abs_width(&Unit::Pixels(self.thickness as u32)) / 2.0;
-        let half_h = segment.abs_height(&Unit::Pixels(self.thickness as u32)) / 2.0;
-        let ox = nx * half_w;
-        let oy = ny * half_h;
-
-        vec![
-            Vertex { position: [x0 + ox, y0 + oy, 0.0], color: self.color },
-            Vertex { position: [x0 - ox, y0 - oy, 0.0], color: self.color },
-            Vertex { position: [x1 - ox, y1 - oy, 0.0], color: self.color },
-            Vertex { position: [x1 + ox, y1 + oy, 0.0], color: self.color },
-        ]
-    }
-
-    fn indices(&self) -> &[u16] {
-        &[0, 1, 2, 0, 2, 3]
     }
 }
 
-/// An element can either be a Shape or a TextSection
+/// Per-point instance data uploaded to the GPU.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PointInstance {
+    /// NDC center of the point
+    pub center: [f32; 2],
+    /// NDC half-extents (half_width, half_height)
+    pub half_size: [f32; 2],
+    /// RGBA color
+    pub color: [f32; 4],
+}
+impl PointInstance {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<PointInstance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    // After center ([f32; 2]) + half_size ([f32; 2])
+                    offset: (std::mem::size_of::<[f32; 2]>() * 2) as wgpu::BufferAddress,
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
+}
+
+/// An element can be a Shape, Point, Polyline, or Text
 pub enum Element {
     Shape(Box<dyn Shape>),
+    Point(PointData),
+    Polyline(PolylineData),
     Text(Text),
 }
