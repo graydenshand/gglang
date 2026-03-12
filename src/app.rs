@@ -3,8 +3,9 @@
 use std::{iter, sync::Arc, vec};
 
 use crate::frame::Frame;
-use crate::plot::{Blueprint, PlotData, Theme};
-use crate::shape::Element;
+use crate::layout::PlotOutput;
+use crate::plot::{Blueprint, PlotData};
+use crate::theme::Theme;
 use glyph_brush::ab_glyph::FontRef;
 use winit::{
     application::ApplicationHandler,
@@ -14,6 +15,7 @@ use winit::{
     window::Window,
 };
 
+use crate::frame::ortho_rotated_ccw;
 use wgpu_text::{BrushBuilder, TextBrush};
 
 #[cfg(target_arch = "wasm32")]
@@ -28,14 +30,15 @@ pub struct AppState<'a> {
     window: Arc<Window>,
     frame: Option<Frame>,
     brush: TextBrush<FontRef<'a>>,
-    elements: Vec<Element>,
+    brush_rotated: TextBrush<FontRef<'a>>,
+    plot_output: PlotOutput,
     theme: Theme,
 }
 
 impl AppState<'_> {
     async fn new(
         window: Arc<Window>,
-        elements: Vec<Element>,
+        plot_output: PlotOutput,
         theme: Theme,
     ) -> anyhow::Result<Self> {
         let size = window.inner_size();
@@ -99,6 +102,13 @@ impl AppState<'_> {
             config.height,
             config.format,
         );
+        let brush_rotated = BrushBuilder::using_font_bytes(font)
+            .unwrap()
+            .with_matrix(ortho_rotated_ccw(
+                config.width as f32,
+                config.height as f32,
+            ))
+            .build(&device, config.width, config.height, config.format);
 
         Ok(Self {
             surface,
@@ -109,7 +119,8 @@ impl AppState<'_> {
             window,
             frame: None,
             brush,
-            elements,
+            brush_rotated,
+            plot_output,
             theme,
         })
     }
@@ -120,11 +131,11 @@ impl AppState<'_> {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
-            self.brush.resize_view(
-                self.config.width as f32,
-                self.config.height as f32,
-                &self.queue,
-            );
+            let w = self.config.width as f32;
+            let h = self.config.height as f32;
+            self.brush.resize_view(w, h, &self.queue);
+            self.brush_rotated
+                .update_matrix(ortho_rotated_ccw(w, h), &self.queue);
             self.update()
         }
     }
@@ -136,7 +147,8 @@ impl AppState<'_> {
             self.window.clone(),
             &self.queue,
             &mut self.brush,
-            &self.elements,
+            &mut self.brush_rotated,
+            &self.plot_output,
             &self.theme,
         );
         self.frame = Some(frame);
@@ -184,10 +196,11 @@ impl AppState<'_> {
             });
 
             if let Some(frame) = &mut self.frame {
-                frame.render(&mut render_pass, &self.brush);
+                frame.render(&mut render_pass);
             }
 
             self.brush.draw(&mut render_pass);
+            self.brush_rotated.draw(&mut render_pass);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -208,13 +221,13 @@ pub struct App {
     #[cfg(target_arch = "wasm32")]
     proxy: Option<winit::event_loop::EventLoopProxy<AppState<'static>>>,
     state: Option<AppState<'static>>,
-    pending_elements: Option<Vec<Element>>,
+    pending_plot_output: Option<PlotOutput>,
     pending_theme: Option<Theme>,
 }
 
 impl App {
     pub fn new(
-        elements: Vec<Element>,
+        plot_output: PlotOutput,
         theme: Theme,
         #[cfg(target_arch = "wasm32")] event_loop: &EventLoop<AppState<'static>>,
     ) -> Self {
@@ -222,7 +235,7 @@ impl App {
         let proxy = Some(event_loop.create_proxy());
         Self {
             state: None,
-            pending_elements: Some(elements),
+            pending_plot_output: Some(plot_output),
             pending_theme: Some(theme),
             #[cfg(target_arch = "wasm32")]
             proxy,
@@ -251,13 +264,13 @@ impl ApplicationHandler<AppState<'static>> for App {
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
-        let elements = self.pending_elements.take().unwrap_or_default();
+        let plot_output = self.pending_plot_output.take().unwrap();
         let theme = self.pending_theme.take().unwrap_or_default();
 
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.state =
-                Some(pollster::block_on(AppState::new(window, elements, theme)).unwrap());
+                Some(pollster::block_on(AppState::new(window, plot_output, theme)).unwrap());
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -266,7 +279,7 @@ impl ApplicationHandler<AppState<'static>> for App {
                 wasm_bindgen_futures::spawn_local(async move {
                     assert!(proxy
                         .send_event(
-                            AppState::new(window, elements, theme)
+                            AppState::new(window, plot_output, theme)
                                 .await
                                 .expect("Unable to create canvas!!!")
                         )
@@ -344,12 +357,12 @@ pub fn run(mut blueprint: Blueprint, data: PlotData) -> anyhow::Result<()> {
         console_log::init_with_level(log::Level::Info).unwrap_throw();
     }
 
-    let elements = blueprint.render(data).map_err(|e| anyhow::anyhow!(e))?;
+    let plot_output = blueprint.render(data).map_err(|e| anyhow::anyhow!(e))?;
     let theme = Theme::default();
 
     let event_loop = EventLoop::with_user_event().build()?;
     let mut app = App::new(
-        elements,
+        plot_output,
         theme,
         #[cfg(target_arch = "wasm32")]
         &event_loop,

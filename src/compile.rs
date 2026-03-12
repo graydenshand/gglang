@@ -1,7 +1,6 @@
 use crate::ast::{AstAesthetic, GeometryType, Program, Statement};
-use crate::plot::{
-    Aesthetic, Blueprint, GeomLine, GeomPoint, IdentityTransform, Layer, Mapping, Theme,
-};
+use crate::plot::{Aesthetic, Blueprint, GeomLine, GeomPoint, IdentityTransform, Layer, Mapping};
+use crate::theme::Theme;
 
 pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
     let mut bp = Blueprint::new(theme);

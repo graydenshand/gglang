@@ -1,4 +1,6 @@
-use crate::shape::{Element, LineSegment, Rectangle, Text, Unit};
+use crate::layout::{LayoutNode, PlotOutput, PlotRegion, SizeSpec, SplitAxis, Unit};
+use crate::shape::{Element, LineSegment, Rectangle, Text, VAlign};
+use crate::theme::Theme;
 use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
 use std::collections::HashMap;
 
@@ -116,7 +118,7 @@ impl<'a> Blueprint<'a> {
     ///
     /// Data is provided with raw column names; the blueprint's mappings are
     /// applied to bind columns to aesthetic channels before rendering.
-    pub fn render(&mut self, raw_data: PlotData) -> Result<Vec<Element>, String> {
+    pub fn render(&mut self, raw_data: PlotData) -> Result<PlotOutput, String> {
         // Apply explicit mappings: raw column names → aesthetic channel names
         let mut data = PlotData::new();
         let mut mapped_aesthetics: Vec<Aesthetic> = vec![];
@@ -168,7 +170,6 @@ impl<'a> Blueprint<'a> {
 
         // TODO: Apply facet transforms at this stage, grouping elements by facet value.
 
-        let mut shapes: Vec<Element> = vec![];
         let mut layer_data_map = std::collections::HashMap::new();
         self.layers.iter().enumerate().for_each(|(i, layer)| {
             // Copy data, then run stat transforms
@@ -182,16 +183,26 @@ impl<'a> Blueprint<'a> {
         for scale in &mut self.scales {
             scale.fit().expect("Scale can't be fit")
         }
-        // Render geoms, appending to shapes vecs
+
+        let mut regions: HashMap<PlotRegion, Vec<Element>> = HashMap::new();
+
+        // Render geoms into DataArea
         self.layers.iter().enumerate().for_each(|(i, layer)| {
             let layer_data = layer_data_map.get(&i).unwrap();
-            shapes.append(&mut layer.geometry.render(layer_data, &self.scales));
+            let mut geom_elements = layer.geometry.render(layer_data, &self.scales);
+            regions
+                .entry(PlotRegion::DataArea)
+                .or_default()
+                .append(&mut geom_elements);
         });
 
-        //Render scales
+        // Render scales — each declares its own region
         for scale in &self.scales {
-            let mut scale_shapes = scale.render();
-            shapes.append(&mut scale_shapes);
+            let (region, mut scale_elements) = scale.render(self.theme);
+            regions
+                .entry(region)
+                .or_default()
+                .append(&mut scale_elements);
         }
 
         // Derive default axis labels from mapping column names
@@ -208,41 +219,60 @@ impl<'a> Blueprint<'a> {
                 .map(|m| m.variable.clone())
         });
 
-        // Emit label elements
+        // Emit label elements into their respective regions
         if let Some(title) = &self.title {
-            shapes.push(Element::Text(Text::centered(
-                title.clone(),
-                32.0,
-                (Unit::NDC(0.0), Unit::NDC(1.2)),
-            )));
+            regions
+                .entry(PlotRegion::Title)
+                .or_default()
+                .push(Element::Text(Text::centered(
+                    title.clone(),
+                    self.theme.title_font_size,
+                    (Unit::Percent(50.0), Unit::Percent(50.0)),
+                ).with_wrap()));
         }
         if let Some(label) = x_label {
-            shapes.push(Element::Text(Text::centered(
-                label,
-                24.0,
-                (Unit::NDC(0.0), Unit::NDC(-1.2)),
-            )));
+            regions
+                .entry(PlotRegion::XAxisGutter)
+                .or_default()
+                .push(Element::Text(Text::centered(
+                    label,
+                    self.theme.axis_label_font_size,
+                    (Unit::Percent(50.0), Unit::NDC(-0.8)),
+                ).with_wrap()));
         }
         if let Some(label) = y_label {
-            shapes.push(Element::Text(Text::new(
-                label,
-                24.0,
-                (Unit::NDC(-1.3), Unit::NDC(0.0)),
-            )));
+            regions
+                .entry(PlotRegion::YAxisGutter)
+                .or_default()
+                .push(Element::Text(
+                    Text::centered(
+                        label,
+                        self.theme.axis_label_font_size,
+                        (Unit::NDC(-0.5), Unit::Percent(50.0)),
+                    )
+                    .with_v_align(VAlign::Center)
+                    .with_rotation()
+                    .with_wrap(),
+                ));
         }
         if let Some(caption) = &self.caption {
-            shapes.push(Element::Text(Text::centered(
-                caption.clone(),
-                20.0,
-                (Unit::NDC(0.0), Unit::NDC(-1.35)),
-            )));
+            regions
+                .entry(PlotRegion::Caption)
+                .or_default()
+                .push(Element::Text(Text::centered(
+                    caption.clone(),
+                    self.theme.caption_font_size,
+                    (Unit::Percent(50.0), Unit::Percent(50.0)),
+                ).with_wrap()));
         }
 
-        // TODO: Project shapes onto coordinate system
-        // TODO: Project position scales onto coordinate system
-        // TODO: Assign window segments to subplots
-        // TODO: Window segment transforms
-        Ok(shapes)
+        let has_legend = self
+            .scales
+            .iter()
+            .any(|s| s.aesthetic_family() == AestheticFamily::Color);
+        let layout = standard_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme);
+
+        Ok(PlotOutput { regions, layout })
     }
 }
 
@@ -391,9 +421,7 @@ impl Geometry for GeomPoint {
             .iter()
             .find(|s| s.aesthetic_family() == AestheticFamily::HorizontalPosition)
             .unwrap();
-        let x = data
-            .get("x")
-            .expect("key existence was already validated");
+        let x = data.get("x").expect("key existence was already validated");
         let x_mapped = match x_scale.map(x).expect("scales were fit to data") {
             PlotParameter::UnitArray(v) => v,
             _ => panic!("expected unit array from position scale"),
@@ -487,21 +515,20 @@ impl Geometry for GeomLine {
         });
 
         // Partition row indices by group value (or all rows = one group)
-        let groups: Vec<Vec<usize>> = if let Some(PlotParameter::StringArray(group_vals)) =
-            data.get("group")
-        {
-            let mut group_map: Vec<(String, Vec<usize>)> = vec![];
-            for (i, val) in group_vals.iter().enumerate() {
-                if let Some(entry) = group_map.iter_mut().find(|(k, _)| k == val) {
-                    entry.1.push(i);
-                } else {
-                    group_map.push((val.clone(), vec![i]));
+        let groups: Vec<Vec<usize>> =
+            if let Some(PlotParameter::StringArray(group_vals)) = data.get("group") {
+                let mut group_map: Vec<(String, Vec<usize>)> = vec![];
+                for (i, val) in group_vals.iter().enumerate() {
+                    if let Some(entry) = group_map.iter_mut().find(|(k, _)| k == val) {
+                        entry.1.push(i);
+                    } else {
+                        group_map.push((val.clone(), vec![i]));
+                    }
                 }
-            }
-            group_map.into_iter().map(|(_, indices)| indices).collect()
-        } else {
-            vec![(0..x_mapped.len()).collect()]
-        };
+                group_map.into_iter().map(|(_, indices)| indices).collect()
+            } else {
+                vec![(0..x_mapped.len()).collect()]
+            };
 
         let mut elements = vec![];
         for group_indices in &groups {
@@ -553,7 +580,12 @@ pub enum Aesthetic {
 
 impl Aesthetic {
     pub fn all() -> &'static [Aesthetic] {
-        &[Aesthetic::X, Aesthetic::Y, Aesthetic::Color, Aesthetic::Group]
+        &[
+            Aesthetic::X,
+            Aesthetic::Y,
+            Aesthetic::Color,
+            Aesthetic::Group,
+        ]
     }
 
     pub fn family(&self) -> AestheticFamily {
@@ -623,8 +655,8 @@ pub trait Scale {
     /// Fit the scale to the data
     fn fit(&mut self) -> Result<(), String>;
 
-    /// Render the legend for this scale.
-    fn render(&self) -> Vec<Element>;
+    /// Render the elements for this scale, returning them tagged with their target region.
+    fn render(&self, theme: &Theme) -> (PlotRegion, Vec<Element>);
 
     /// Return the family this scale belongs to.
     fn aesthetic_family(&self) -> AestheticFamily;
@@ -651,15 +683,13 @@ impl ScalePositionContinuous {
         }
     }
 
-    fn render_x_axis(&self) -> Vec<Element> {
+    fn render_x_axis(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
         let mut elements = vec![];
 
+        // Axis line: full width at top of gutter (adjacent to DataArea)
         let xaxis = Rectangle::new(
-            [
-                Unit::NDC(NDC_SCALE.midpoint() as f32),
-                Unit::NDC(NDC_SCALE.min as f32),
-            ],
-            Unit::NDC(NDC_SCALE.span() as f32),
+            [Unit::NDC(0.0), Unit::NDC(1.0)],
+            Unit::NDC(2.0),
             Unit::Pixels(1),
             [0.0, 0.0, 0.0],
         );
@@ -669,8 +699,9 @@ impl ScalePositionContinuous {
         for tick_value in nice_ticks(s.min, s.max, 5) {
             let x_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
 
+            // Tick mark hangs down from top edge
             let tick = Rectangle::new(
-                [Unit::NDC(x_ndc), Unit::NDC(NDC_SCALE.min as f32)],
+                [Unit::NDC(x_ndc), Unit::NDC(1.0)],
                 Unit::Pixels(1),
                 Unit::Pixels(6),
                 [0.0, 0.0, 0.0],
@@ -682,26 +713,25 @@ impl ScalePositionContinuous {
             } else {
                 format!("{:.1}", tick_value)
             };
-            elements.push(Element::Text(Text::new(
+            // Tick label just below tick marks
+            elements.push(Element::Text(Text::centered(
                 label,
-                24.0,
-                (Unit::NDC(x_ndc), Unit::NDC(-1.08)),
+                theme.tick_label_font_size,
+                (Unit::NDC(x_ndc), Unit::NDC(0.8)),
             )));
         }
 
-        elements
+        (PlotRegion::XAxisGutter, elements)
     }
 
-    fn render_y_axis(&self) -> Vec<Element> {
+    fn render_y_axis(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
         let mut elements: Vec<Element> = vec![];
 
+        // Axis line: at right edge of gutter (adjacent to DataArea), full height
         let yaxis = Rectangle::new(
-            [
-                Unit::NDC(NDC_SCALE.min as f32),
-                Unit::NDC(NDC_SCALE.midpoint() as f32),
-            ],
+            [Unit::NDC(1.0), Unit::NDC(0.0)],
             Unit::Pixels(1),
-            Unit::NDC(NDC_SCALE.span() as f32),
+            Unit::NDC(2.0),
             [0.0, 0.0, 0.0],
         );
         elements.push(Element::Shape(Box::new(yaxis)));
@@ -710,8 +740,9 @@ impl ScalePositionContinuous {
         for tick_value in nice_ticks(s.min, s.max, 5) {
             let y_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
 
+            // Tick mark protrudes left from right edge
             let tick = Rectangle::new(
-                [Unit::NDC(NDC_SCALE.min as f32), Unit::NDC(y_ndc)],
+                [Unit::NDC(1.0), Unit::NDC(y_ndc)],
                 Unit::Pixels(6),
                 Unit::Pixels(1),
                 [0.0, 0.0, 0.0],
@@ -723,14 +754,18 @@ impl ScalePositionContinuous {
             } else {
                 format!("{:.1}", tick_value)
             };
-            elements.push(Element::Text(Text::new(
-                label,
-                24.0,
-                (Unit::NDC(-1.08), Unit::NDC(y_ndc)),
-            )));
+            // Tick label vertically centered on tick mark
+            elements.push(Element::Text(
+                Text::centered(
+                    label,
+                    theme.tick_label_font_size,
+                    (Unit::NDC(0.5), Unit::NDC(y_ndc)),
+                )
+                .with_v_align(VAlign::Center),
+            ));
         }
 
-        elements
+        (PlotRegion::YAxisGutter, elements)
     }
 }
 
@@ -757,10 +792,10 @@ impl Scale for ScalePositionContinuous {
         }
     }
 
-    fn render(&self) -> Vec<Element> {
+    fn render(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
         match self.axis {
-            Axis::X => self.render_x_axis(),
-            Axis::Y => self.render_y_axis(),
+            Axis::X => self.render_x_axis(theme),
+            Axis::Y => self.render_y_axis(theme),
         }
     }
 
@@ -860,28 +895,31 @@ impl Scale for ScaleColorDiscrete {
         }
     }
 
-    fn render(&self) -> Vec<Element> {
+    fn render(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
         let mut elements = vec![];
-        let x_ndc = 1.15_f32;
-        let y_start = 0.8_f32;
-        let spacing = 0.2_f32;
+        // Region-local coords: NDC(-1..1) spans the legend segment
+        let y_start = 0.7_f32;
+        let spacing = 0.18_f32;
 
         for (i, cat) in self.categories.iter().enumerate() {
             let y = y_start - (i as f32 * spacing);
             let swatch = Rectangle::new(
-                [Unit::NDC(x_ndc), Unit::NDC(y)],
+                [Unit::Percent(10.0), Unit::NDC(y)],
                 Unit::Pixels(14),
                 Unit::Pixels(14),
                 self.palette[i],
             );
             elements.push(Element::Shape(Box::new(swatch)));
-            elements.push(Element::Text(Text::new(
-                cat.clone(),
-                20.0,
-                (Unit::NDC(x_ndc + 0.1), Unit::NDC(y)),
-            )));
+            elements.push(Element::Text(
+                Text::new(
+                    cat.clone(),
+                    theme.legend_label_font_size,
+                    (Unit::Percent(22.0), Unit::NDC(y)),
+                )
+                .with_v_align(VAlign::Center),
+            ));
         }
-        elements
+        (PlotRegion::Legend, elements)
     }
 
     fn aesthetic_family(&self) -> AestheticFamily {
@@ -892,17 +930,6 @@ impl Scale for ScaleColorDiscrete {
 // should this be a trait?
 enum CoordinateSystem {
     Cartesian,
-}
-
-pub struct Theme {
-    pub window_margin: Unit,
-}
-impl Default for Theme {
-    fn default() -> Self {
-        Self {
-            window_margin: Unit::Percent(25.),
-        }
-    }
 }
 
 /// Array data types that are either provided to a plot, or produced via a
@@ -982,6 +1009,72 @@ impl MappedData {
     }
 }
 
+/// Build the standard single-plot layout tree.
+///
+/// ```text
+/// Window (after margin)
+/// +-- Vertical split (top to bottom)
+///     +-- Pixels(50): Title         [if has_title]
+///     +-- Flex(1.0): Horizontal split
+///     |   +-- Pixels(80): YAxisGutter column
+///     |   +-- Flex(1.0):  DataArea + XAxisGutter column
+///     |   +-- Pixels(120): Legend column [if has_legend]
+///     +-- Pixels(30): Caption        [if has_caption]
+/// ```
+fn standard_plot_layout(has_title: bool, has_caption: bool, has_legend: bool, theme: &Theme) -> LayoutNode {
+    let data_column = LayoutNode::Split {
+        axis: SplitAxis::Vertical,
+        children: vec![
+            (SizeSpec::Flex(1.0), LayoutNode::Leaf(PlotRegion::DataArea)),
+            (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(PlotRegion::XAxisGutter)),
+        ],
+    };
+
+    let y_axis_column = LayoutNode::Split {
+        axis: SplitAxis::Vertical,
+        children: vec![
+            (SizeSpec::Flex(1.0), LayoutNode::Leaf(PlotRegion::YAxisGutter)),
+            (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(PlotRegion::Spacer)),
+        ],
+    };
+
+    let mut main_columns: Vec<(SizeSpec, LayoutNode)> = vec![
+        (SizeSpec::Pixels(theme.y_gutter_width), y_axis_column),
+        (SizeSpec::Flex(1.0), data_column),
+    ];
+
+    if has_legend {
+        let legend_column = LayoutNode::Split {
+            axis: SplitAxis::Vertical,
+            children: vec![
+                (SizeSpec::Flex(1.0), LayoutNode::Leaf(PlotRegion::Legend)),
+                (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(PlotRegion::Spacer)),
+            ],
+        };
+        main_columns.push((SizeSpec::Pixels(theme.legend_margin), LayoutNode::Leaf(PlotRegion::Spacer)));
+        main_columns.push((SizeSpec::Pixels(theme.legend_width), legend_column));
+    }
+
+    let main = LayoutNode::Split {
+        axis: SplitAxis::Horizontal,
+        children: main_columns,
+    };
+
+    let mut rows: Vec<(SizeSpec, LayoutNode)> = vec![];
+    if has_title {
+        rows.push((SizeSpec::Pixels(theme.title_height), LayoutNode::Leaf(PlotRegion::Title)));
+    }
+    rows.push((SizeSpec::Flex(1.0), main));
+    if has_caption {
+        rows.push((SizeSpec::Pixels(theme.caption_height), LayoutNode::Leaf(PlotRegion::Caption)));
+    }
+
+    LayoutNode::Split {
+        axis: SplitAxis::Vertical,
+        children: rows,
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1013,9 +1106,8 @@ mod test {
     #[test]
     fn scale_color_discrete_round_trip() {
         let mut scale = ScaleColorDiscrete::new();
-        let input = PlotParameter::StringArray(vec![
-            "a".into(), "b".into(), "a".into(), "c".into(),
-        ]);
+        let input =
+            PlotParameter::StringArray(vec!["a".into(), "b".into(), "a".into(), "c".into()]);
         scale.append(&input).unwrap();
         scale.fit().unwrap();
 
@@ -1037,14 +1129,15 @@ mod test {
     #[test]
     fn scale_color_discrete_preserves_insertion_order() {
         let mut scale = ScaleColorDiscrete::new();
-        let input = PlotParameter::StringArray(vec![
-            "banana".into(), "apple".into(), "banana".into(),
-        ]);
+        let input =
+            PlotParameter::StringArray(vec!["banana".into(), "apple".into(), "banana".into()]);
         scale.append(&input).unwrap();
         scale.fit().unwrap();
 
         // First unique value gets hue 0, second gets hue 180
-        let legend = scale.render();
+        let theme = Theme::default();
+        let (region, legend) = scale.render(&theme);
+        assert_eq!(region, PlotRegion::Legend);
         // Legend should have 2 entries (swatch + label each)
         assert_eq!(legend.len(), 4);
     }
@@ -1067,9 +1160,18 @@ mod test {
         );
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Color, variable: "species".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "x".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Color,
+                variable: "species".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)))
             .with_scale(Box::new(ScaleColorDiscrete::new()));
@@ -1077,13 +1179,19 @@ mod test {
         let mut data = PlotData::new();
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 3.0, 5.0]));
         data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0, 6.0]));
-        data.insert("species".into(), PlotParameter::StringArray(vec![
-            "a".into(), "b".into(), "a".into(),
-        ]));
+        data.insert(
+            "species".into(),
+            PlotParameter::StringArray(vec!["a".into(), "b".into(), "a".into()]),
+        );
 
-        let elements = bp.render(data).expect("render should succeed");
-        // Should have: 3 points + axis elements + legend elements
-        assert!(elements.len() > 3);
+        let output = bp.render(data).expect("render should succeed");
+        // Should have: 3 points in DataArea + axis elements + legend elements
+        let data_count = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(0, |v| v.len());
+        assert!(data_count >= 3);
+        assert!(output.regions.contains_key(&PlotRegion::Legend));
     }
 
     #[test]
@@ -1097,8 +1205,14 @@ mod test {
         );
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "x".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
@@ -1106,8 +1220,14 @@ mod test {
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 3.0]));
         data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0]));
 
-        let elements = bp.render(data).expect("render should succeed without color");
-        assert!(elements.len() > 2);
+        let output = bp
+            .render(data)
+            .expect("render should succeed without color");
+        let data_count = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(0, |v| v.len());
+        assert!(data_count >= 2);
     }
 
     #[test]
@@ -1126,9 +1246,12 @@ mod test {
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
         data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
 
-        let elements = bp.render(data).expect("auto-mapping should work");
-        // Should have 2 points + axis elements
-        assert!(elements.len() > 2);
+        let output = bp.render(data).expect("auto-mapping should work");
+        let data_count = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(0, |v| v.len());
+        assert!(data_count >= 2);
     }
 
     #[test]
@@ -1145,11 +1268,20 @@ mod test {
         let mut data = PlotData::new();
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
         data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
-        data.insert("color".into(), PlotParameter::StringArray(vec!["a".into(), "b".into()]));
+        data.insert(
+            "color".into(),
+            PlotParameter::StringArray(vec!["a".into(), "b".into()]),
+        );
 
-        let elements = bp.render(data).expect("auto-mapping with color should work");
-        // Should have 2 points + axis elements + legend elements
-        assert!(elements.len() > 4);
+        let output = bp
+            .render(data)
+            .expect("auto-mapping with color should work");
+        let data_count = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(0, |v| v.len());
+        assert!(data_count >= 2);
+        assert!(output.regions.contains_key(&PlotRegion::Legend));
     }
 
     #[test]
@@ -1167,16 +1299,24 @@ mod test {
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
         data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
 
-        let elements = bp.render(data).unwrap();
-        let text_contents: Vec<String> = elements
-            .iter()
+        let output = bp.render(data).unwrap();
+        let all_text: Vec<String> = output
+            .regions
+            .values()
+            .flat_map(|v| v.iter())
             .filter_map(|e| match e {
                 Element::Text(t) => Some(t.value.clone()),
                 _ => None,
             })
             .collect();
-        assert!(text_contents.contains(&"x".to_string()), "should have x axis label");
-        assert!(text_contents.contains(&"y".to_string()), "should have y axis label");
+        assert!(
+            all_text.contains(&"x".to_string()),
+            "should have x axis label"
+        );
+        assert!(
+            all_text.contains(&"y".to_string()),
+            "should have y axis label"
+        );
     }
 
     #[test]
@@ -1191,18 +1331,33 @@ mod test {
         // Explicitly map "year" → X, but data also has an "x" column
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "year".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "year".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
         let mut data = PlotData::new();
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
-        data.insert("year".into(), PlotParameter::FloatArray(vec![2020.0, 2021.0]));
+        data.insert(
+            "year".into(),
+            PlotParameter::FloatArray(vec![2020.0, 2021.0]),
+        );
         data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
 
-        let elements = bp.render(data).expect("explicit mapping should take precedence");
-        assert!(elements.len() > 2);
+        let output = bp
+            .render(data)
+            .expect("explicit mapping should take precedence");
+        let data_count = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(0, |v| v.len());
+        assert!(data_count >= 2);
     }
 
     #[test]
@@ -1216,8 +1371,14 @@ mod test {
         );
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "x".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
@@ -1225,11 +1386,21 @@ mod test {
         data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0]));
         data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 4.0, 2.0]));
 
-        let elements = bp.render(data).expect("render should succeed");
-        // 3 points → 2 line segments + axis elements
-        let shape_count = elements.iter().filter(|e| matches!(e, Element::Shape(_))).count();
-        // 2 segments + axis shapes
-        assert!(shape_count >= 2, "expected at least 2 line segments, got {}", shape_count);
+        let output = bp.render(data).expect("render should succeed");
+        // 3 points → 2 line segments in DataArea
+        let data_elements = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(&[][..], |v| v.as_slice());
+        let shape_count = data_elements
+            .iter()
+            .filter(|e| matches!(e, Element::Shape(_)))
+            .count();
+        assert!(
+            shape_count >= 2,
+            "expected at least 2 line segments, got {}",
+            shape_count
+        );
     }
 
     #[test]
@@ -1243,23 +1414,45 @@ mod test {
         );
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Group, variable: "grp".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "x".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Group,
+                variable: "grp".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
-        data.insert("grp".into(), PlotParameter::StringArray(vec![
-            "a".into(), "a".into(), "b".into(), "b".into(),
-        ]));
+        data.insert(
+            "x".into(),
+            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+        );
+        data.insert(
+            "y".into(),
+            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+        );
+        data.insert(
+            "grp".into(),
+            PlotParameter::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
+        );
 
-        let elements = bp.render(data).expect("render should succeed");
-        // 2 groups × 1 segment each = 2 line segments (+ axis elements)
-        let shape_count = elements.iter().filter(|e| matches!(e, Element::Shape(_))).count();
-        // axis shapes + 2 line segments
+        let output = bp.render(data).expect("render should succeed");
+        // 2 groups × 1 segment each = 2 line segments in DataArea
+        let data_elements = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(&[][..], |v| v.as_slice());
+        let shape_count = data_elements
+            .iter()
+            .filter(|e| matches!(e, Element::Shape(_)))
+            .count();
         assert!(shape_count >= 2);
     }
 
@@ -1274,9 +1467,18 @@ mod test {
         );
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Group, variable: "grp".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "x".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Group,
+                variable: "grp".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
@@ -1285,11 +1487,9 @@ mod test {
         data.insert("y".into(), PlotParameter::FloatArray(vec![1.0]));
         data.insert("grp".into(), PlotParameter::StringArray(vec!["a".into()]));
 
-        let elements = bp.render(data).expect("single point should not panic");
-        // No line segments from the geom (only axis elements)
-        let line_shapes = elements.iter().filter(|e| matches!(e, Element::Shape(_))).count();
-        // Only axis elements, no line segments from geom
-        assert!(line_shapes >= 0); // just verifying no panic
+        let output = bp.render(data).expect("single point should not panic");
+        // Just verifying no panic; DataArea may be absent or empty
+        let _ = output.regions.get(&PlotRegion::DataArea);
     }
 
     #[test]
@@ -1303,23 +1503,47 @@ mod test {
         );
         let mut bp = Blueprint::new(&theme)
             .with_layer(layer)
-            .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Group, variable: "grp".into() })
-            .with_mapping(Mapping { aesthetic: Aesthetic::Color, variable: "grp".into() })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::X,
+                variable: "x".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Y,
+                variable: "y".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Group,
+                variable: "grp".into(),
+            })
+            .with_mapping(Mapping {
+                aesthetic: Aesthetic::Color,
+                variable: "grp".into(),
+            })
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)))
             .with_scale(Box::new(ScaleColorDiscrete::new()));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]));
-        data.insert("grp".into(), PlotParameter::StringArray(vec![
-            "a".into(), "a".into(), "b".into(), "b".into(),
-        ]));
+        data.insert(
+            "x".into(),
+            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+        );
+        data.insert(
+            "y".into(),
+            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+        );
+        data.insert(
+            "grp".into(),
+            PlotParameter::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
+        );
 
-        let elements = bp.render(data).expect("render with color should succeed");
-        assert!(elements.len() > 2);
+        let output = bp.render(data).expect("render with color should succeed");
+        let data_count = output
+            .regions
+            .get(&PlotRegion::DataArea)
+            .map_or(0, |v| v.len());
+        assert!(data_count >= 2);
+        assert!(output.regions.contains_key(&PlotRegion::Legend));
     }
 
     #[test]
@@ -1328,8 +1552,14 @@ mod test {
         let layer = Layer::new(
             Box::new(GeomPoint {}),
             vec![
-                Mapping { aesthetic: Aesthetic::X, variable: "x".into() },
-                Mapping { aesthetic: Aesthetic::Y, variable: "y".into() },
+                Mapping {
+                    aesthetic: Aesthetic::X,
+                    variable: "x".into(),
+                },
+                Mapping {
+                    aesthetic: Aesthetic::Y,
+                    variable: "y".into(),
+                },
             ],
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
@@ -1338,5 +1568,76 @@ mod test {
             .with_layer(layer)
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
+    }
+
+    fn layout_test_segment() -> crate::layout::WindowSegment {
+        crate::layout::WindowSegment::new(
+            ContinuousNumericScale { min: -1., max: 1. },
+            ContinuousNumericScale { min: -1., max: 1. },
+            ContinuousNumericScale { min: 0., max: 800. },
+            ContinuousNumericScale { min: 0., max: 600. },
+        )
+    }
+
+    #[test]
+    fn data_area_and_x_gutter_share_x_range() {
+        let seg = layout_test_segment();
+        let layout = standard_plot_layout(true, true, false, &Theme::default());
+        let regions = layout.resolve(&seg);
+
+        let data = regions.get(&PlotRegion::DataArea).unwrap();
+        let xgutter = regions.get(&PlotRegion::XAxisGutter).unwrap();
+
+        assert!((data.ndc_scale_x.min - xgutter.ndc_scale_x.min).abs() < 1e-5);
+        assert!((data.ndc_scale_x.max - xgutter.ndc_scale_x.max).abs() < 1e-5);
+        assert!((data.pixel_scale_x.min - xgutter.pixel_scale_x.min).abs() < 1e-5);
+        assert!((data.pixel_scale_x.max - xgutter.pixel_scale_x.max).abs() < 1e-5);
+    }
+
+    #[test]
+    fn data_area_and_y_gutter_share_y_range() {
+        let seg = layout_test_segment();
+        let layout = standard_plot_layout(true, true, false, &Theme::default());
+        let regions = layout.resolve(&seg);
+
+        let data = regions.get(&PlotRegion::DataArea).unwrap();
+        let ygutter = regions.get(&PlotRegion::YAxisGutter).unwrap();
+
+        assert!((data.ndc_scale_y.min - ygutter.ndc_scale_y.min).abs() < 1e-5);
+        assert!((data.ndc_scale_y.max - ygutter.ndc_scale_y.max).abs() < 1e-5);
+        assert!((data.pixel_scale_y.min - ygutter.pixel_scale_y.min).abs() < 1e-5);
+        assert!((data.pixel_scale_y.max - ygutter.pixel_scale_y.max).abs() < 1e-5);
+    }
+
+    #[test]
+    fn spacer_not_in_resolved_map() {
+        let seg = layout_test_segment();
+        let layout = standard_plot_layout(true, true, true, &Theme::default());
+        let regions = layout.resolve(&seg);
+        assert!(!regions.contains_key(&PlotRegion::Spacer));
+    }
+
+    #[test]
+    fn layout_with_legend_has_all_regions() {
+        let seg = layout_test_segment();
+        let layout = standard_plot_layout(true, true, true, &Theme::default());
+        let regions = layout.resolve(&seg);
+        assert!(regions.contains_key(&PlotRegion::DataArea));
+        assert!(regions.contains_key(&PlotRegion::XAxisGutter));
+        assert!(regions.contains_key(&PlotRegion::YAxisGutter));
+        assert!(regions.contains_key(&PlotRegion::Title));
+        assert!(regions.contains_key(&PlotRegion::Legend));
+        assert!(regions.contains_key(&PlotRegion::Caption));
+    }
+
+    #[test]
+    fn layout_without_optional_regions() {
+        let seg = layout_test_segment();
+        let layout = standard_plot_layout(false, false, false, &Theme::default());
+        let regions = layout.resolve(&seg);
+        assert!(!regions.contains_key(&PlotRegion::Title));
+        assert!(!regions.contains_key(&PlotRegion::Legend));
+        assert!(!regions.contains_key(&PlotRegion::Caption));
+        assert!(regions.contains_key(&PlotRegion::DataArea));
     }
 }

@@ -1,8 +1,8 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use winit::window::{self, Window};
 
-use crate::transform::{ContinuousNumericScale, NDC_SCALE, PERCENT_SCALE};
+use crate::layout::{Unit, WindowSegment};
+use crate::transform::ContinuousNumericScale;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -28,153 +28,6 @@ impl Vertex {
                     format: wgpu::VertexFormat::Float32x3,
                 },
             ],
-        }
-    }
-}
-
-/// A value in a particular coordinate system
-#[derive(Debug, Clone, Copy)]
-pub enum Unit {
-    // Pixels
-    Pixels(u32),
-    // Normalized Device Coordinates (-1,1)
-    NDC(f32),
-    // Percent (0, 1)
-    Percent(f32),
-}
-impl Unit {
-    /// Convert to a Unit::NDC
-    fn as_ndc(&self, pixels: u32) -> Unit {
-        match self {
-            Unit::NDC(v) => Unit::NDC(*v),
-            Unit::Pixels(v) => Unit::NDC(*v as f32 / pixels as f32),
-            Unit::Percent(v) => Unit::NDC((v / 100. * 2.0) as f32),
-        }
-    }
-    /// Convert to a Unit::Pixels
-    fn as_px(&self, pixels: u32) -> Unit {
-        match self {
-            Unit::NDC(v) => Unit::Pixels((*v / 2.0 * pixels as f32) as u32),
-            Unit::Pixels(v) => Unit::Pixels(*v),
-            Unit::Percent(v) => Unit::Pixels((v / 100. * pixels as f32) as u32),
-        }
-    }
-    /// Extract the inner value, and coerce to f64.
-    ///
-    /// WARNING: this function isn't completely safe. All enum variants will
-    /// return a compliant value, but the interpretation of that value depends
-    /// on the variant. You should only use this when you already know the
-    /// value's variant.
-    fn as_f64(&self) -> f64 {
-        match self {
-            Unit::Pixels(v) => *v as f64,
-            Unit::NDC(v) => *v as f64,
-            Unit::Percent(v) => *v as f64,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct WindowSegment {
-    /// Window segment in NDC units
-    ndc_scale_x: ContinuousNumericScale,
-    ndc_scale_y: ContinuousNumericScale,
-
-    /// Window segment in pixel units
-    pixel_scale_x: ContinuousNumericScale,
-    pixel_scale_y: ContinuousNumericScale,
-}
-impl WindowSegment {
-    pub fn new(
-        ndc_scale_x: ContinuousNumericScale,
-        ndc_scale_y: ContinuousNumericScale,
-        pixel_scale_x: ContinuousNumericScale,
-        pixel_scale_y: ContinuousNumericScale,
-    ) -> Self {
-        Self {
-            ndc_scale_x,
-            ndc_scale_y,
-            pixel_scale_x,
-            pixel_scale_y,
-        }
-    }
-
-    /// Create a new WindowSegment for the entire window.
-    pub fn new_root(window: std::sync::Arc<Window>) -> Self {
-        Self::new(
-            NDC_SCALE,
-            NDC_SCALE,
-            ContinuousNumericScale {
-                min: 0.,
-                max: window.inner_size().width as f64,
-            },
-            ContinuousNumericScale {
-                min: 0.,
-                max: window.inner_size().height as f64,
-            },
-        )
-    }
-
-    /// Map an x position to absolute window coordinates
-    pub fn abs_x(&self, x: &Unit) -> f32 {
-        match x {
-            // relative NDC coordinates
-            Unit::NDC(v) => NDC_SCALE.map_position(&self.ndc_scale_x, *v as f64) as f32,
-            // pixel coordinates
-            Unit::Pixels(v) => self
-                .pixel_scale_x
-                .map_position(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Percent(v) => PERCENT_SCALE.map_position(&self.ndc_scale_x, *v as f64) as f32,
-        }
-    }
-
-    /// Map a width unit to absolute window coordinates
-    pub fn abs_width(&self, x: &Unit) -> f32 {
-        match x {
-            Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Pixels(v) => self.pixel_scale_x.map_size(&self.ndc_scale_x, *v as f64) as f32,
-            Unit::Percent(v) => PERCENT_SCALE.map_size(&self.ndc_scale_x, *v as f64) as f32,
-        }
-    }
-
-    /// Map a y position to absolute window coordinates
-    pub fn abs_y(&self, y: &Unit) -> f32 {
-        match y {
-            Unit::NDC(v) => NDC_SCALE.map_position(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Pixels(v) => self
-                .pixel_scale_y
-                .map_position(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Percent(v) => PERCENT_SCALE.map_position(&self.ndc_scale_y, *v as f64) as f32,
-        }
-    }
-
-    /// Map a height unit to absolute window coordinates
-    pub fn abs_height(&self, y: &Unit) -> f32 {
-        match y {
-            Unit::NDC(v) => NDC_SCALE.map_size(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Pixels(v) => self.pixel_scale_y.map_size(&self.ndc_scale_y, *v as f64) as f32,
-            Unit::Percent(v) => PERCENT_SCALE.map_size(&self.ndc_scale_y, *v as f64) as f32,
-        }
-    }
-
-    /// Create a new WindowSegment with margin (padding) on each side
-    ///
-    /// The margin is subtracted from all sides of the current window segment,
-    /// creating a smaller window segment with the specified padding.
-    pub fn with_margin(&self, margin: Unit) -> Self {
-        // Convert margin to NDC and pixel units for both axes
-        let margin_ndc_x = margin.as_ndc(self.pixel_scale_x.span() as u32);
-        let margin_ndc_y = margin.as_ndc(self.pixel_scale_y.span() as u32);
-
-        let margin_pixels_x = margin_ndc_x.as_px(self.pixel_scale_x.span() as u32);
-        let margin_pixels_y = margin_ndc_y.as_px(self.pixel_scale_y.span() as u32);
-
-        // Create new scales with margin applied
-        Self {
-            ndc_scale_x: self.ndc_scale_x.shrink(margin_ndc_x.as_f64()),
-            ndc_scale_y: self.ndc_scale_y.shrink(margin_ndc_y.as_f64()),
-            pixel_scale_x: self.pixel_scale_x.shrink(margin_pixels_x.as_f64()),
-            pixel_scale_y: self.pixel_scale_y.shrink(margin_pixels_y.as_f64()),
         }
     }
 }
@@ -284,12 +137,22 @@ pub enum HAlign {
     Center,
 }
 
+#[derive(Clone, Debug, Default)]
+pub enum VAlign {
+    #[default]
+    Top,
+    Center,
+}
+
 #[derive(Clone, Debug)]
 pub struct Text {
     pub value: String,
     pub font_size: f32,
     pub position: (Unit, Unit),
     pub h_align: HAlign,
+    pub v_align: VAlign,
+    pub rotated: bool,
+    pub wrap: bool,
 }
 impl Text {
     pub fn new(value: String, font_size: f32, position: (Unit, Unit)) -> Self {
@@ -298,6 +161,9 @@ impl Text {
             font_size,
             position,
             h_align: HAlign::Left,
+            v_align: VAlign::Top,
+            rotated: false,
+            wrap: false,
         }
     }
 
@@ -307,23 +173,77 @@ impl Text {
             font_size,
             position,
             h_align: HAlign::Center,
+            v_align: VAlign::Top,
+            rotated: false,
+            wrap: false,
         }
     }
 
-    /// Return the text as a wgpu_text::glyph_brush::Section
+    pub fn with_wrap(mut self) -> Self {
+        self.wrap = true;
+        self
+    }
+
+    pub fn with_v_align(mut self, v_align: VAlign) -> Self {
+        self.v_align = v_align;
+        self
+    }
+
+    pub fn with_rotation(mut self) -> Self {
+        self.rotated = true;
+        self
+    }
+
+    /// Return the text as a wgpu_text::glyph_brush::Section.
+    /// For rotated text, `window_height` is needed to transform coordinates
+    /// into the rotated brush's coordinate system.
     pub fn as_section<'a>(
         &'a self,
         window_segment: &WindowSegment,
+        window_height: f32,
     ) -> wgpu_text::glyph_brush::Section<'a> {
         let h_align = match self.h_align {
             HAlign::Left => wgpu_text::glyph_brush::HorizontalAlign::Left,
             HAlign::Center => wgpu_text::glyph_brush::HorizontalAlign::Center,
         };
+        let v_align = match self.v_align {
+            VAlign::Top => wgpu_text::glyph_brush::VerticalAlign::Top,
+            VAlign::Center => wgpu_text::glyph_brush::VerticalAlign::Center,
+        };
+        let position = if self.rotated {
+            let (sx, sy) = self.position_as_pixels(window_segment);
+            (window_height - sy, sx)
+        } else {
+            self.position_as_pixels(window_segment)
+        };
+        let layout = if self.wrap {
+            wgpu_text::glyph_brush::Layout::default_wrap()
+                .h_align(h_align)
+                .v_align(v_align)
+        } else {
+            wgpu_text::glyph_brush::Layout::default_single_line()
+                .h_align(h_align)
+                .v_align(v_align)
+        };
+        let bounds = if self.wrap {
+            if self.rotated {
+                (
+                    window_segment.pixel_scale_y.span() as f32,
+                    window_segment.pixel_scale_x.span() as f32,
+                )
+            } else {
+                (
+                    window_segment.pixel_scale_x.span() as f32,
+                    window_segment.pixel_scale_y.span() as f32,
+                )
+            }
+        } else {
+            (f32::INFINITY, f32::INFINITY)
+        };
         wgpu_text::glyph_brush::Section::default()
-            .with_screen_position(self.position_as_pixels(window_segment))
-            .with_layout(
-                wgpu_text::glyph_brush::Layout::default_single_line().h_align(h_align),
-            )
+            .with_screen_position(position)
+            .with_bounds(bounds)
+            .with_layout(layout)
             .add_text(wgpu_text::glyph_brush::Text::new(&self.value).with_scale(self.font_size))
     }
 
@@ -350,6 +270,7 @@ impl Text {
 
         (x as f32, y as f32)
     }
+
 }
 
 pub struct LineSegment {

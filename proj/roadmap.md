@@ -10,7 +10,7 @@
 
 3. ~~**Timeseries traces**~~ (`stories/timeseries_traces.md`) — ✅ Done. `GeomLine` with `group` aesthetic for partitioning series, `LineSegment` shape primitive, `Aesthetic::Group` / `AestheticFamily::Group` (no scale — partitions only). Works with `color` aesthetic for per-group coloring.
 
-4. **Layout tree** (`issues/issue-layout-tree.md`) — Proper axis gutters, legend regions, faceting. Currently hacked with out-of-bounds NDC coordinates. Becomes urgent when legends arrive.
+4. ~~**Layout tree**~~ (`issues/issue-layout-tree.md`) — ✅ Done. Tree-based layout system with `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`. `Unit` and `WindowSegment` moved to `layout.rs` with `slice_x`/`slice_y` subdivision. `Blueprint::render()` returns `PlotOutput` (elements partitioned by region + layout tree). `Frame` resolves layout and projects each region through its own `WindowSegment`. Eliminates all out-of-bounds NDC positioning. Faceting support is now unblocked.
 
 ## Tier 3 — Performance and polish (defer)
 

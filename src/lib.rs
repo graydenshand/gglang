@@ -48,6 +48,8 @@ pub mod ast;
 pub mod compile;
 pub mod data;
 mod frame;
+pub mod layout;
 pub mod plot;
 mod shape;
+pub mod theme;
 pub mod transform;

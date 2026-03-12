@@ -1,20 +1,19 @@
 # Grammar of Graphics
 
-A plotting library inspired by ggplot2.
-
-ggplot2, a package in the R programming language, is a great plotting library.
-Once learned, composing data visualizations using the layered grammar is 
-simple and allows for more custom products fit for the particular situation
-rather than libraries which force the user to choose a *type* of plot.
-
-However, today so much data visualization is done in python and javascript.
-Mostly I see people using plotly, d3.js, and matplotlib.
+A ggplot2-inspired statistical graphics engine written in Rust, using wgpu for GPU-accelerated rendering. The system has two components: a DSL compiler for a language called GQL (Grammar of Graphics Language), and a rendering engine that produces plots from a `Blueprint` specification.
 
 ## Goals
 
-Language independent visualization definitions
+- A declarative, language-independent visualization definition (GQL)
+- High-performance native rendering suitable for large datasets and interactivity
+- Grammar-of-graphics compositional model (layers, scales, aesthetics, stats, facets)
 
-Portable output (e.g. web & native)
+## Running
+
+```bash
+cargo run --bin plot file.gg data.csv   # compile + render
+cargo run -- path.gg                    # parser (prints statement types)
+```
 
 ## GQL
 

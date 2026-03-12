@@ -7,7 +7,7 @@ fn main() -> anyhow::Result<()> {
 
     let source = std::fs::read_to_string(&args[1])?;
     let program = ggc::ast::parse(&source).map_err(|e| anyhow::anyhow!(e))?;
-    let theme = ggc::plot::Theme::default();
+    let theme = ggc::theme::Theme::default();
     let blueprint = ggc::compile::compile(&program, &theme).map_err(|e| anyhow::anyhow!(e))?;
     let data = ggc::data::load_csv(std::path::Path::new(&args[2]))
         .map_err(|e| anyhow::anyhow!(e))?;
