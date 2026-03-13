@@ -705,7 +705,7 @@ impl ScalePositionContinuous {
             Unit::Pixels(1),
             [0.0, 0.0, 0.0, 1.0],
         );
-        elements.push(Element::Shape(Box::new(xaxis)));
+        elements.push(Element::Rect(xaxis));
 
         let s = &self.data_scale.expect("Scale isn't fit");
         for tick_value in nice_ticks(s.min, s.max, 5) {
@@ -718,7 +718,7 @@ impl ScalePositionContinuous {
                 Unit::Pixels(6),
                 [0.0, 0.0, 0.0, 1.0],
             );
-            elements.push(Element::Shape(Box::new(tick)));
+            elements.push(Element::Rect(tick));
 
             let label = if tick_value.fract() == 0.0 {
                 format!("{}", tick_value as i64)
@@ -746,7 +746,7 @@ impl ScalePositionContinuous {
             Unit::NDC(2.0),
             [0.0, 0.0, 0.0, 1.0],
         );
-        elements.push(Element::Shape(Box::new(yaxis)));
+        elements.push(Element::Rect(yaxis));
 
         let s = &self.data_scale.expect("Scale isn't fit");
         for tick_value in nice_ticks(s.min, s.max, 5) {
@@ -759,7 +759,7 @@ impl ScalePositionContinuous {
                 Unit::Pixels(1),
                 [0.0, 0.0, 0.0, 1.0],
             );
-            elements.push(Element::Shape(Box::new(tick)));
+            elements.push(Element::Rect(tick));
 
             let label = if tick_value.fract() == 0.0 {
                 format!("{}", tick_value as i64)
@@ -922,7 +922,7 @@ impl Scale for ScaleColorDiscrete {
                 Unit::Pixels(14),
                 [r, g, b, 1.0],
             );
-            elements.push(Element::Shape(Box::new(swatch)));
+            elements.push(Element::Rect(swatch));
             elements.push(Element::Text(
                 Text::new(
                     cat.clone(),
@@ -1405,14 +1405,14 @@ mod test {
             .regions
             .get(&PlotRegion::DataArea)
             .map_or(&[][..], |v| v.as_slice());
-        let shape_count = data_elements
+        let polyline_count = data_elements
             .iter()
-            .filter(|e| matches!(e, Element::Shape(_)))
+            .filter(|e| matches!(e, Element::Polyline(_)))
             .count();
         assert!(
-            shape_count >= 2,
-            "expected at least 2 line segments, got {}",
-            shape_count
+            polyline_count >= 1,
+            "expected at least 1 polyline, got {}",
+            polyline_count
         );
     }
 
@@ -1457,16 +1457,16 @@ mod test {
         );
 
         let output = bp.render(data).expect("render should succeed");
-        // 2 groups × 1 segment each = 2 line segments in DataArea
+        // 2 groups → 2 polylines in DataArea
         let data_elements = output
             .regions
             .get(&PlotRegion::DataArea)
             .map_or(&[][..], |v| v.as_slice());
-        let shape_count = data_elements
+        let polyline_count = data_elements
             .iter()
-            .filter(|e| matches!(e, Element::Shape(_)))
+            .filter(|e| matches!(e, Element::Polyline(_)))
             .count();
-        assert!(shape_count >= 2);
+        assert!(polyline_count >= 2);
     }
 
     #[test]

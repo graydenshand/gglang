@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
-use winit::window::Window;
 
 use crate::shape::Element;
 use crate::transform::{ContinuousNumericScale, NDC_SCALE, PERCENT_SCALE};
@@ -73,18 +71,12 @@ impl WindowSegment {
     }
 
     /// Create a new WindowSegment for the entire window.
-    pub fn new_root(window: Arc<Window>) -> Self {
+    pub fn new_root(width: u32, height: u32) -> Self {
         Self::new(
             NDC_SCALE,
             NDC_SCALE,
-            ContinuousNumericScale {
-                min: 0.,
-                max: window.inner_size().width as f64,
-            },
-            ContinuousNumericScale {
-                min: 0.,
-                max: window.inner_size().height as f64,
-            },
+            ContinuousNumericScale { min: 0., max: width as f64 },
+            ContinuousNumericScale { min: 0., max: height as f64 },
         )
     }
 

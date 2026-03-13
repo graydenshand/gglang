@@ -1,8 +1,14 @@
-# gglang / ggc
+# CLAUDE.md
+
+This file contains instructions for Claude for working with this repo.
+
+As you make changes, keep this file up to date with the useful context to help you and others.
+
+## Project Overview
 
 A ggplot2-inspired statistical graphics engine written in Rust, using wgpu for GPU-accelerated rendering. The system has two components: a DSL compiler for a language called GQL (Grammar of Graphics Language), and a rendering engine that produces plots from a `Blueprint` specification.
 
-## Project goals
+Goals:
 
 - A declarative, language-independent visualization definition (GQL)
 - High-performance native rendering suitable for large datasets and interactivity
@@ -11,7 +17,7 @@ A ggplot2-inspired statistical graphics engine written in Rust, using wgpu for G
 
 ## Current state
 
-The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu. Supported features: `GeomPoint` and `GeomLine` with X/Y continuous scales, `group` aesthetic for partitioning line series, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels. CSV loading auto-detects numeric vs. string columns. A tree-based layout system gives each plot region (data area, axis gutters, title, legend, caption) its own `WindowSegment`, replacing the previous out-of-bounds NDC positioning. The rendering backend uses three separate pipelines: a general pipeline for rectangles/axes/ticks, an instanced SDF pipeline for anti-aliased points, and a miter-join tessellated pipeline for polylines. A view transform uniform (currently identity) unblocks future pan/zoom.
+The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu. Supported features: `GeomPoint` and `GeomLine` with X/Y continuous scales, `group` aesthetic for partitioning line series, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels. CSV loading auto-detects numeric vs. string columns. A tree-based layout system gives each plot region (data area, axis gutters, title, legend, caption) its own `WindowSegment`, replacing the previous out-of-bounds NDC positioning. The rendering backend uses three separate pipelines: a general pipeline for rectangles/axes/ticks, an instanced SDF pipeline for anti-aliased points, and a miter-join tessellated pipeline for polylines. A view transform uniform (currently identity) unblocks future pan/zoom. The domain modules (`shape.rs`, `layout.rs`, `plot.rs`) are fully backend-agnostic — all wgpu/winit types are confined to `frame.rs` and `app.rs`, enabling GPU-free testing and future SVG/PNG export.
 
 ## Module map
 
@@ -24,10 +30,10 @@ The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CS
 | `src/compile.rs` | Compiles AST `Program` into a `Blueprint` — wires mappings, layers, scales |
 | `src/data.rs` | CSV loader — auto-detects numeric (`FloatArray`) vs. string (`StringArray`) columns |
 | `src/app.rs` | wgpu window, surface, event loop, `AppState` |
-| `src/frame.rs` | Bridges `PlotOutput` to GPU — resolves layout tree, projects per-region elements through their `WindowSegment`, builds vertex/index buffers, queues text |
-| `src/layout.rs` | Layout system: `Unit`, `WindowSegment` (with `slice_x`/`slice_y`), `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`, `PlotOutput`, `standard_plot_layout()` |
+| `src/frame.rs` | Bridges `PlotOutput` to GPU — resolves layout tree, projects per-region elements through their `WindowSegment`, builds vertex/index buffers, queues text. Owns all GPU vertex types (`Vertex`, `LineVertex`, `QuadVertex`, `PointInstance`), vertex generation (`rectangle_vertices`), text-to-glyph conversion (`text_to_section`), and polyline tessellation |
+| `src/layout.rs` | Layout system: `Unit`, `WindowSegment` (with `slice_x`/`slice_y`), `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`, `PlotOutput`. Backend-agnostic (no wgpu/winit imports) |
 | `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`/`AestheticFamily` enums, `ScalePositionContinuous`, `ScaleColorDiscrete`, `GeomPoint`, `GeomLine`, `PlotData`, `Theme` |
-| `src/shape.rs` | GPU primitives: `Vertex`, `Shape` trait, `Rectangle`, `Text`, `PolylineData`, `LineVertex`, `PointData`/`PointInstance`, `QuadVertex`, `Element` enum (imports `Unit`/`WindowSegment` from `layout`) |
+| `src/shape.rs` | Domain-level render primitives: `Rectangle`, `Text`, `PolylineData`, `PointData`, `Element` enum. Backend-agnostic (no wgpu imports) |
 | `src/transform.rs` | `ContinuousNumericScale` — linear interpolation between ranges |
 | `src/shader.wgsl` | WGSL shaders: general pass-through (`vs_main`/`fs_main`), instanced SDF points (`vs_point_instanced`/`fs_point`), miter-join polylines (`vs_line`/`fs_line` with `fwidth` AA) |
 | `src/grammar.pest` | Pest grammar for GQL |
@@ -56,7 +62,7 @@ Frame::new()             → LayoutNode::resolve()  (layout tree + root segment 
 
 ### Key abstraction boundary
 
-`Blueprint::render(PlotData) -> PlotOutput` is the clean seam between the plot model (domain logic, scales, geoms) and the rendering backend (wgpu). Keep wgpu types out of `plot.rs`.
+`Blueprint::render(PlotData) -> PlotOutput` is the clean seam between the plot model (domain logic, scales, geoms) and the rendering backend (wgpu). All modules above this boundary (`plot.rs`, `shape.rs`, `layout.rs`) are backend-agnostic — zero wgpu/winit imports. Keep it that way.
 
 ## GQL language syntax
 
@@ -79,14 +85,14 @@ Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; g
 ## Key architectural decisions
 
 - **Theme is borrowed, not owned** by `Blueprint` — themes affect things beyond the plot scope (window margin, background) and may be shared across multiple plots.
-- **`Element` enum** (`Shape | Point | Polyline | Text`) unifies geometry at the render boundary. Points and polylines carry domain-level data (positions in `Unit` coords); `Frame` converts them to GPU-specific formats (instanced quads, tessellated triangle meshes).
+- **`Element` enum** (`Rect | Point | Polyline | Text`) unifies geometry at the render boundary. All variants carry domain-level data (positions in `Unit` coords); `Frame` converts them to GPU-specific formats (vertices, instanced quads, tessellated triangle meshes).
 - **`Mapping` is a struct** `{ aesthetic: Aesthetic, variable: String }` — extensible to any aesthetic channel. `Aesthetic` and `AestheticFamily` are enums, not traits.
 
 ## Issues and project planning
 
 Open architectural issues are in `proj/issues/`:
 - ~~`issue-layout-tree.md`~~ — ✅ Done
-- `issue-render-backend-abstraction.md` — decoupling geom logic from wgpu
+- ~~`issue-render-backend-abstraction.md`~~ — ✅ Done (phase 1: `shape.rs` and `layout.rs` fully backend-agnostic; GPU types live in `frame.rs`)
 - `issue-plotdata-typing.md` — stronger typing through the data pipeline
 - ~~`issue-shader-architecture.md`~~ — ✅ Done (view transform uniform, instanced SDF points, miter-join polylines, separate pipelines)
 

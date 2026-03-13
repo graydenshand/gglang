@@ -16,6 +16,6 @@
 
 5. ~~**Shader architecture**~~ (`issues/issue-shader-architecture.md`) — ✅ Done. View transform uniform (identity, unblocks future pan/zoom). GPU instancing for `GeomPoint` (shared quad + per-point instance buffer, SDF anti-aliased circles). Miter-join polyline rendering for `GeomLine` (CPU-tessellated triangle strips with per-vertex edge distance, `fwidth()`-based AA). Three separate render pipelines: general (rectangles/axes/ticks), point (instanced SDF circles), line (tessellated polylines). Alpha blending enabled on all pipelines.
 
-6. **Render backend abstraction** (`issues/issue-render-backend-abstraction.md`) — SVG/PNG export, testability without a GPU device.
+6. ~~**Render backend abstraction**~~ (`issues/issue-render-backend-abstraction.md`) — ✅ Done (phase 1). `shape.rs` and `layout.rs` are now fully backend-agnostic (zero `wgpu`/`winit` imports). All GPU vertex types (`Vertex`, `LineVertex`, `QuadVertex`, `PointInstance`), vertex generation (`rectangle_vertices`), and text-to-glyph conversion (`text_to_section`) moved to `frame.rs`. `Shape` trait eliminated; `Element::Shape(Box<dyn Shape>)` replaced with `Element::Rect(Rectangle)`. `WindowSegment::new_root` takes `(width, height)` instead of `Arc<Window>`. `plot.rs` tests run without a GPU device. Phase 2 (SVG/PNG export backend) is future work.
 
 7. **PlotData typing** (`issues/issue-plotdata-typing.md`) — Compile-time guarantees across pipeline stages.

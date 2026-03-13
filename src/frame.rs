@@ -4,7 +4,8 @@ use winit::window::Window;
 
 use crate::layout::{PlotOutput, WindowSegment};
 use crate::theme::Theme;
-use crate::shape::{Element, LineVertex, PointInstance, QuadVertex, Vertex};
+use crate::shape::{Element, HAlign, Rectangle, Text, VAlign};
+use crate::transform::ContinuousNumericScale;
 
 use wgpu_text::{
     glyph_brush::Section as TextSection,
@@ -15,6 +16,206 @@ use glyph_brush::ab_glyph::FontRef;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+/// General-pipeline vertex: position + color.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    position: [f32; 3],
+    color: [f32; 4],
+}
+impl Vertex {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
+}
+
+/// GPU vertex for tessellated polyline triangle strips.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LineVertex {
+    pub position: [f32; 2],
+    pub color: [f32; 4],
+    pub edge_dist: f32,
+}
+impl LineVertex {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<LineVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() + std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32,
+                },
+            ],
+        }
+    }
+}
+
+/// A single quad vertex for the shared point quad (4 vertices drawn N times).
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct QuadVertex {
+    /// Offset from center in [-1, 1] space; multiplied by half_size on GPU
+    pub offset: [f32; 2],
+    /// UV coordinates [0, 1] for SDF circle computation
+    pub uv: [f32; 2],
+}
+impl QuadVertex {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<QuadVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
+        }
+    }
+}
+
+/// Per-point instance data uploaded to the GPU.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PointInstance {
+    /// NDC center of the point
+    pub center: [f32; 2],
+    /// NDC half-extents (half_width, half_height)
+    pub half_size: [f32; 2],
+    /// RGBA color
+    pub color: [f32; 4],
+}
+impl PointInstance {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<PointInstance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() * 2) as wgpu::BufferAddress,
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
+}
+
+const RECT_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+
+fn rectangle_vertices(rect: &Rectangle, segment: &WindowSegment) -> Vec<Vertex> {
+    let abs_position = [
+        segment.abs_x(&rect.position[0]),
+        segment.abs_y(&rect.position[1]),
+    ];
+    let abs_width = segment.abs_width(&rect.width);
+    let abs_height = segment.abs_height(&rect.height);
+    vec![
+        Vertex { position: [abs_position[0] - abs_width / 2., abs_position[1] + abs_height / 2., 0.0], color: rect.color },
+        Vertex { position: [abs_position[0] - abs_width / 2., abs_position[1] - abs_height / 2., 0.0], color: rect.color },
+        Vertex { position: [abs_position[0] + abs_width / 2., abs_position[1] - abs_height / 2., 0.0], color: rect.color },
+        Vertex { position: [abs_position[0] + abs_width / 2., abs_position[1] + abs_height / 2., 0.0], color: rect.color },
+    ]
+}
+
+fn text_to_section<'a>(
+    text: &'a Text,
+    segment: &WindowSegment,
+    window_height: f32,
+) -> wgpu_text::glyph_brush::Section<'a> {
+    let h_align = match text.h_align {
+        HAlign::Left => wgpu_text::glyph_brush::HorizontalAlign::Left,
+        HAlign::Center => wgpu_text::glyph_brush::HorizontalAlign::Center,
+    };
+    let v_align = match text.v_align {
+        VAlign::Top => wgpu_text::glyph_brush::VerticalAlign::Top,
+        VAlign::Center => wgpu_text::glyph_brush::VerticalAlign::Center,
+    };
+
+    // Convert text position to pixels
+    let x_ndc = segment.abs_x(&text.position.0);
+    let x = segment.ndc_scale_x.map_position(&segment.pixel_scale_x, x_ndc.into());
+    let y_ndc = segment.abs_y(&text.position.1);
+    let flipped_pixel_y = ContinuousNumericScale {
+        min: segment.pixel_scale_y.max,
+        max: segment.pixel_scale_y.min,
+    };
+    let y = segment.ndc_scale_y.map_position(&flipped_pixel_y, y_ndc.into());
+    let position = if text.rotated {
+        (window_height - y as f32, x as f32)
+    } else {
+        (x as f32, y as f32)
+    };
+
+    let layout = if text.wrap {
+        wgpu_text::glyph_brush::Layout::default_wrap()
+            .h_align(h_align)
+            .v_align(v_align)
+    } else {
+        wgpu_text::glyph_brush::Layout::default_single_line()
+            .h_align(h_align)
+            .v_align(v_align)
+    };
+    let bounds = if text.wrap {
+        if text.rotated {
+            (segment.pixel_scale_y.span() as f32, segment.pixel_scale_x.span() as f32)
+        } else {
+            (segment.pixel_scale_x.span() as f32, segment.pixel_scale_y.span() as f32)
+        }
+    } else {
+        (f32::INFINITY, f32::INFINITY)
+    };
+    wgpu_text::glyph_brush::Section::default()
+        .with_screen_position(position)
+        .with_bounds(bounds)
+        .with_layout(layout)
+        .add_text(wgpu_text::glyph_brush::Text::new(&text.value).with_scale(text.font_size))
+}
 
 /// Orthographic projection matrix with 90° CCW rotation.
 /// In this coordinate system, (rx, ry) maps to screen position where:
@@ -326,10 +527,12 @@ impl Frame {
             immediate_size: 0,
         });
 
-        let root_segment = WindowSegment::new_root(window.clone());
+        let window_width = window.inner_size().width;
+        let window_height_u32 = window.inner_size().height;
+        let root_segment = WindowSegment::new_root(window_width, window_height_u32);
         let margined = root_segment.with_margin(theme.window_margin);
         let segments = plot_output.layout.resolve(&margined);
-        let window_height = window.inner_size().height as f32;
+        let window_height = window_height_u32 as f32;
 
         let mut vertices: Vec<Vertex> = vec![];
         let mut indices: Vec<u32> = vec![];
@@ -338,8 +541,7 @@ impl Frame {
         let mut line_indices: Vec<u32> = vec![];
         let mut text_sections: Vec<TextSection> = vec![];
         let mut rotated_text_sections: Vec<TextSection> = vec![];
-        let window_width = window.inner_size().width as f32;
-        let px_per_ndc_x = window_width / 2.0;
+        let px_per_ndc_x = window_width as f32 / 2.0;
         let px_per_ndc_y = window_height / 2.0;
 
         for (region, elements) in &plot_output.regions {
@@ -349,14 +551,10 @@ impl Frame {
             };
             for element in elements.iter() {
                 match element {
-                    Element::Shape(s) => {
-                        let base_index = vertices.len();
-                        let shape_vertices = s.vertices(segment);
-                        if shape_vertices.is_empty() {
-                            continue;
-                        }
-                        vertices.extend_from_slice(&shape_vertices);
-                        indices.extend(s.indices().iter().map(|idx| idx + base_index as u32));
+                    Element::Rect(r) => {
+                        let base_index = vertices.len() as u32;
+                        vertices.extend_from_slice(&rectangle_vertices(r, segment));
+                        indices.extend(RECT_INDICES.iter().map(|idx| idx + base_index));
                     }
                     Element::Point(p) => {
                         let cx = segment.abs_x(&p.position[0]);
@@ -385,9 +583,9 @@ impl Frame {
                     }
                     Element::Text(t) => {
                         if t.rotated {
-                            rotated_text_sections.push(t.as_section(segment, window_height));
+                            rotated_text_sections.push(text_to_section(t, segment, window_height));
                         } else {
-                            text_sections.push(t.as_section(segment, window_height));
+                            text_sections.push(text_to_section(t, segment, window_height));
                         }
                     }
                 }
