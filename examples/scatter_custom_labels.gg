@@ -1,5 +1,5 @@
 GEOM POINT
 TITLE "Iris Sepal Dimensions"
-CAPTION "Created by Grayden Shand <graydenshand at gmail dot com> March 11 2026. This plot contains displays made up data, inspired by the famous iris dataset. One time I grew an iris, and I found it to be a really pretty flower."
+CAPTION "Created by Grayden Shand <graydenshand at gmail dot com> March 11 2026 using gglang. This plot contains made up data, inspired by the famous iris dataset."
 XLABEL "Sepal width"
 YLABEL "Sepal length"

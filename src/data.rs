@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::plot::{PlotData, PlotParameter};
+use crate::plot::{PlotData, RawColumn};
 
 pub fn load_csv(path: &Path) -> Result<PlotData, String> {
     let content =
@@ -36,8 +36,8 @@ pub fn load_csv(path: &Path) -> Result<PlotData, String> {
     for (i, col) in columns.iter().enumerate() {
         let floats: Result<Vec<f64>, _> = string_data[i].iter().map(|s| s.parse::<f64>()).collect();
         let param = match floats {
-            Ok(v) => PlotParameter::FloatArray(v),
-            Err(_) => PlotParameter::StringArray(string_data[i].clone()),
+            Ok(v) => RawColumn::FloatArray(v),
+            Err(_) => RawColumn::StringArray(string_data[i].clone()),
         };
         plot_data.insert(col.to_string(), param);
     }
@@ -66,13 +66,13 @@ mod tests {
 
         // Numeric columns should be FloatArray
         match data.get("x").unwrap() {
-            PlotParameter::FloatArray(v) => assert_eq!(v, &[1.0, 3.0, 5.0]),
+            RawColumn::FloatArray(v) => assert_eq!(v, &[1.0, 3.0, 5.0]),
             other => panic!("Expected FloatArray for x, got {:?}", std::mem::discriminant(other)),
         }
 
         // String columns should be StringArray
         match data.get("species").unwrap() {
-            PlotParameter::StringArray(v) => {
+            RawColumn::StringArray(v) => {
                 assert_eq!(v, &["setosa", "versicolor", "setosa"]);
             }
             other => panic!("Expected StringArray for species, got {:?}", std::mem::discriminant(other)),

@@ -119,14 +119,14 @@ impl<'a> Blueprint<'a> {
     /// Data is provided with raw column names; the blueprint's mappings are
     /// applied to bind columns to aesthetic channels before rendering.
     pub fn render(&mut self, raw_data: PlotData) -> Result<PlotOutput, String> {
-        // Apply explicit mappings: raw column names → aesthetic channel names
-        let mut data = PlotData::new();
+        // Step 1: Column rename — PlotData (string-keyed) → AesData (Aesthetic-keyed)
+        let mut aes_data = AesData::new();
         let mut mapped_aesthetics: Vec<Aesthetic> = vec![];
         for mapping in &self.mappings {
-            let param = raw_data
+            let col = raw_data
                 .get(&mapping.variable)
                 .ok_or_else(|| format!("Column '{}' not found in data", mapping.variable))?;
-            data.insert(mapping.aesthetic.name().to_string(), param.clone());
+            aes_data.insert(mapping.aesthetic, col.clone());
             mapped_aesthetics.push(mapping.aesthetic);
         }
 
@@ -136,8 +136,8 @@ impl<'a> Blueprint<'a> {
             if mapped_aesthetics.contains(aes) {
                 continue;
             }
-            if let Some(param) = raw_data.get(aes.name()) {
-                data.insert(aes.name().to_string(), param.clone());
+            if let Some(col) = raw_data.get(aes.name()) {
+                aes_data.insert(*aes, col.clone());
                 mapped_aesthetics.push(*aes);
                 self.mappings.push(Mapping {
                     aesthetic: *aes,
@@ -157,39 +157,58 @@ impl<'a> Blueprint<'a> {
         // Validate required mappings are satisfied for all geometries
         for g in self.layers.iter().map(|l| &l.geometry) {
             for aes in g.required_aesthetics() {
-                if !data.contains(aes.name()) {
+                if !aes_data.contains(aes) {
                     return Err(format!("Missing required aesthetic {}", aes.name()));
                 }
             }
         }
 
-        // Scale transforms
+        // Step 2: Scale transforms (identity by default)
         for scale in &self.scales {
-            data = scale.transform(data);
+            aes_data = scale.transform(aes_data);
         }
 
-        // TODO: Apply facet transforms at this stage, grouping elements by facet value.
-
-        let mut layer_data_map = std::collections::HashMap::new();
+        // Step 3: Per-layer stat transforms and scale feeding
+        let mut layer_aes_map = HashMap::new();
         self.layers.iter().enumerate().for_each(|(i, layer)| {
-            // Copy data, then run stat transforms
-            let mut layer_data = data.clone();
-            layer_data = layer.stat.transform(&layer_data);
-            // Append to scales
-            layer.geometry.update_scales(&mut self.scales, &layer_data);
-            layer_data_map.insert(i, layer_data);
+            let transformed = layer.stat.transform(&aes_data);
+            layer.geometry.update_scales(&mut self.scales, &transformed);
+            layer_aes_map.insert(i, transformed);
         });
-        // fit scales
+
+        // Step 4: Fit scales
         for scale in &mut self.scales {
             scale.fit().expect("Scale can't be fit")
         }
 
+        // Step 5: Bulk mapping — build ResolvedData per layer
+        let mut layer_resolved_map: HashMap<usize, ResolvedData> = HashMap::new();
+        for (i, layer_aes) in &layer_aes_map {
+            let mut resolved = ResolvedData {
+                mapped: HashMap::new(),
+                raw: HashMap::new(),
+            };
+            for aes in Aesthetic::all() {
+                if let Some(col) = layer_aes.get(*aes) {
+                    let family = aes.family();
+                    if let Some(scale) = self.scales.iter().find(|s| s.aesthetic_family() == family) {
+                        let mapped_col = scale.map(col)?;
+                        resolved.mapped.insert(*aes, mapped_col);
+                    } else {
+                        // No scale for this aesthetic (e.g. Group) — keep raw
+                        resolved.raw.insert(*aes, col.clone());
+                    }
+                }
+            }
+            layer_resolved_map.insert(*i, resolved);
+        }
+
         let mut regions: HashMap<PlotRegion, Vec<Element>> = HashMap::new();
 
-        // Render geoms into DataArea
+        // Step 6: Render geoms into DataArea
         self.layers.iter().enumerate().for_each(|(i, layer)| {
-            let layer_data = layer_data_map.get(&i).unwrap();
-            let mut geom_elements = layer.geometry.render(layer_data, &self.scales);
+            let resolved = layer_resolved_map.get(&i).unwrap();
+            let mut geom_elements = layer.geometry.render(resolved);
             regions
                 .entry(PlotRegion::DataArea)
                 .or_default()
@@ -339,11 +358,8 @@ pub trait Geometry {
         &IdentityTransform {}
     }
 
-    /// Renders shapes to be drawn on the screen.
-    ///
-    /// Coordinates of the shapes are in data-space. These are later projected
-    /// onto a coordinate system and translated into screen-space.
-    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element>;
+    /// Renders shapes to be drawn on the screen using fully resolved (scale-mapped) data.
+    fn render(&self, data: &ResolvedData) -> Vec<Element>;
 
     /// The list of aesthetic families that may be used in this layer
     fn aesthetic_families(&self) -> Vec<AestheticFamily> {
@@ -354,27 +370,10 @@ pub trait Geometry {
             .collect()
     }
 
-    /// Filter down the plot data to only the aesthetics used in this geometry, and convert to MappedData
-    fn mapped_data(&self, data: &PlotData) -> MappedData {
-        let mut mapped_data: Vec<(Aesthetic, PlotParameter)> = vec![];
-        for aes in self
-            .required_aesthetics()
-            .iter()
-            .chain(self.extra_aesthetics().iter())
-        {
-            if let Some(param) = data.get(aes.name()) {
-                mapped_data.push((*aes, param.clone()));
-            }
-        }
-        MappedData { data: mapped_data }
-    }
-
-    /// Update scales using the data in this plot
-    fn update_scales(&self, scales: &mut Vec<Box<dyn Scale>>, data: &PlotData) {
-        let mapped_data = self.mapped_data(&data);
+    /// Update scales using the aesthetic-keyed raw data for this layer.
+    fn update_scales(&self, scales: &mut Vec<Box<dyn Scale>>, data: &AesData) {
         let families: Vec<AestheticFamily> = self.aesthetic_families();
 
-        // build a map of family to scale for the scales used in this plot
         let mut family_scale_map: HashMap<AestheticFamily, &mut Box<dyn Scale>> = scales
             .iter_mut()
             .filter_map(|s| {
@@ -387,12 +386,15 @@ pub trait Geometry {
             })
             .collect();
 
-        // update the scale values for the scales used in this plot each
-        // mapping's data is routed to specific scales. e.g. x axis goes to
-        // horizontal position scale
-        for (aes, values) in mapped_data.data.iter() {
-            if let Some(scale) = family_scale_map.get_mut(&aes.family()) {
-                scale.append(values).expect("scale append failed");
+        for aes in self
+            .required_aesthetics()
+            .iter()
+            .chain(self.extra_aesthetics().iter())
+        {
+            if let Some(col) = data.get(*aes) {
+                if let Some(scale) = family_scale_map.get_mut(&aes.family()) {
+                    scale.append(col).expect("scale append failed");
+                }
             }
         }
     }
@@ -404,7 +406,7 @@ pub trait Geometry {
 ///
 /// Required aesthetics: `x`, `y`
 ///
-/// Extra aeshetics: none
+/// Extra aesthetics: `color`
 pub struct GeomPoint;
 impl Geometry for GeomPoint {
     fn required_aesthetics(&self) -> Vec<Aesthetic> {
@@ -415,51 +417,32 @@ impl Geometry for GeomPoint {
         vec![Aesthetic::Color]
     }
 
-    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element> {
-        let mut points = vec![];
-        let x_scale = scales
-            .iter()
-            .find(|s| s.aesthetic_family() == AestheticFamily::HorizontalPosition)
-            .unwrap();
-        let x = data.get("x").expect("key existence was already validated");
-        let x_mapped = match x_scale.map(x).expect("scales were fit to data") {
-            PlotParameter::UnitArray(v) => v,
-            _ => panic!("expected unit array from position scale"),
+    fn render(&self, data: &ResolvedData) -> Vec<Element> {
+        let x_mapped = match data.mapped.get(&Aesthetic::X).expect("X was validated") {
+            MappedColumn::UnitArray(v) => v,
+            _ => panic!("expected UnitArray from position scale"),
         };
-
-        let y_scale = scales
-            .iter()
-            .find(|s| s.aesthetic_family() == AestheticFamily::VerticalPosition)
-            .unwrap();
-        let y = data.get("y").expect("already validated");
-        let y_mapped = match y_scale.map(y).expect("scales were fit to data") {
-            PlotParameter::UnitArray(v) => v,
-            _ => panic!("expected unit array from position scale"),
+        let y_mapped = match data.mapped.get(&Aesthetic::Y).expect("Y was validated") {
+            MappedColumn::UnitArray(v) => v,
+            _ => panic!("expected UnitArray from position scale"),
         };
-
-        // Resolve per-point colors if a color aesthetic is mapped
-        let colors: Option<Vec<[f32; 3]>> = data.get("color").map(|color_data| {
-            let color_scale = scales
-                .iter()
-                .find(|s| s.aesthetic_family() == AestheticFamily::Color)
-                .expect("color scale must exist when color aesthetic is mapped");
-            match color_scale.map(color_data).expect("color scale was fit") {
-                PlotParameter::ColorArray(v) => v,
-                _ => panic!("expected color array from color scale"),
-            }
+        let colors: Option<&Vec<[f32; 3]>> = data.mapped.get(&Aesthetic::Color).map(|c| match c {
+            MappedColumn::ColorArray(v) => v,
+            _ => panic!("expected ColorArray from color scale"),
         });
 
-        for i in 0..x.len() {
-            let color = colors.as_ref().map_or([0.0, 0.0, 0.0, 1.0], |c| {
-                let rgb = c[i];
-                [rgb[0], rgb[1], rgb[2], 1.0]
+        let n = x_mapped.len();
+        let mut points = Vec::with_capacity(n);
+        for i in 0..n {
+            let color = colors.map_or([0.0, 0.0, 0.0, 1.0], |c| {
+                let [r, g, b] = c[i];
+                [r, g, b, 1.0]
             });
-            let p = PointData {
+            points.push(Element::Point(PointData {
                 position: [x_mapped[i], y_mapped[i]],
                 size: Unit::Pixels(16),
                 color,
-            };
-            points.push(Element::Point(p));
+            }));
         }
         points
     }
@@ -483,43 +466,23 @@ impl Geometry for GeomLine {
         vec![Aesthetic::Group, Aesthetic::Color]
     }
 
-    fn render(&self, data: &PlotData, scales: &Vec<Box<dyn Scale>>) -> Vec<Element> {
-        let x_scale = scales
-            .iter()
-            .find(|s| s.aesthetic_family() == AestheticFamily::HorizontalPosition)
-            .unwrap();
-        let x = data.get("x").expect("key existence was already validated");
-        let x_mapped = match x_scale.map(x).expect("scales were fit to data") {
-            PlotParameter::UnitArray(v) => v,
-            _ => panic!("expected unit array from position scale"),
+    fn render(&self, data: &ResolvedData) -> Vec<Element> {
+        let x_mapped = match data.mapped.get(&Aesthetic::X).expect("X was validated") {
+            MappedColumn::UnitArray(v) => v,
+            _ => panic!("expected UnitArray from position scale"),
         };
-
-        let y_scale = scales
-            .iter()
-            .find(|s| s.aesthetic_family() == AestheticFamily::VerticalPosition)
-            .unwrap();
-        let y = data.get("y").expect("already validated");
-        let y_mapped = match y_scale.map(y).expect("scales were fit to data") {
-            PlotParameter::UnitArray(v) => v,
-            _ => panic!("expected unit array from position scale"),
+        let y_mapped = match data.mapped.get(&Aesthetic::Y).expect("Y was validated") {
+            MappedColumn::UnitArray(v) => v,
+            _ => panic!("expected UnitArray from position scale"),
         };
-
-        // Resolve per-point colors if a color aesthetic is mapped
-        let colors: Option<Vec<[f32; 3]>> = data.get("color").map(|color_data| {
-            let color_scale = scales
-                .iter()
-                .find(|s| s.aesthetic_family() == AestheticFamily::Color)
-                .expect("color scale must exist when color aesthetic is mapped");
-            match color_scale.map(color_data).expect("color scale was fit") {
-                PlotParameter::ColorArray(v) => v,
-                _ => panic!("expected color array from color scale"),
-            }
+        let colors: Option<&Vec<[f32; 3]>> = data.mapped.get(&Aesthetic::Color).map(|c| match c {
+            MappedColumn::ColorArray(v) => v,
+            _ => panic!("expected ColorArray from color scale"),
         });
 
         // Partition row indices by group value (or all rows = one group)
-
         let groups: Vec<Vec<usize>> =
-            if let Some(PlotParameter::StringArray(group_vals)) = data.get("group") {
+            if let Some(RawColumn::StringArray(group_vals)) = data.raw.get(&Aesthetic::Group) {
                 let mut group_map: Vec<(String, Vec<usize>)> = vec![];
                 for (i, val) in group_vals.iter().enumerate() {
                     if let Some(entry) = group_map.iter_mut().find(|(k, _)| k == val) {
@@ -545,9 +508,9 @@ impl Geometry for GeomLine {
             let point_colors: Vec<[f32; 4]> = group_indices
                 .iter()
                 .map(|&i| {
-                    colors.as_ref().map_or([0.0, 0.0, 0.0, 1.0], |c| {
-                        let rgb = c[i];
-                        [rgb[0], rgb[1], rgb[2], 1.0]
+                    colors.map_or([0.0, 0.0, 0.0, 1.0], |c| {
+                        let [r, g, b] = c[i];
+                        [r, g, b, 1.0]
                     })
                 })
                 .collect();
@@ -567,12 +530,12 @@ struct GeomBar;
 
 /// A stat
 pub trait StatTransform {
-    /// Transform data before plotting a geometry
-    fn transform(&self, data: &PlotData) -> PlotData;
+    /// Transform aesthetic-keyed data before plotting a geometry
+    fn transform(&self, data: &AesData) -> AesData;
 }
 pub struct IdentityTransform;
 impl StatTransform for IdentityTransform {
-    fn transform(&self, data: &PlotData) -> PlotData {
+    fn transform(&self, data: &AesData) -> AesData {
         data.clone()
     }
 }
@@ -650,19 +613,18 @@ pub struct Mapping {
 /// For example, a continuous numeric scale maps length on the screen to
 /// the mapped variable. A discrete color scale maps color to a category.
 pub trait Scale {
-    /// Transform plot data for this scale.
+    /// Transform aesthetic-keyed data for this scale.
     ///
     /// By default, no transformations are applied
-    fn transform(&self, data: PlotData) -> PlotData {
+    fn transform(&self, data: AesData) -> AesData {
         data
     }
 
-    /// Map an array of data values to the scale, returning an array of
-    /// transformed values, possibly of a different type
-    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String>;
+    /// Map an array of raw column values through the scale, returning mapped output.
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, String>;
 
-    /// Append a set of data values to the scale
-    fn append(&mut self, v: &PlotParameter) -> Result<(), String>;
+    /// Append a set of raw column values to the scale
+    fn append(&mut self, v: &RawColumn) -> Result<(), String>;
 
     /// Fit the scale to the data
     fn fit(&mut self) -> Result<(), String>;
@@ -789,11 +751,11 @@ impl Scale for ScalePositionContinuous {
         Ok(())
     }
 
-    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, String> {
         let values = v.as_f64()?;
 
         if let Some(s) = &self.data_scale {
-            Ok(PlotParameter::UnitArray(
+            Ok(MappedColumn::UnitArray(
                 values
                     .iter()
                     .map(|v| Unit::NDC(s.map_position(&NDC_SCALE, *v) as f32))
@@ -818,7 +780,7 @@ impl Scale for ScalePositionContinuous {
         }
     }
 
-    fn append(&mut self, v: &PlotParameter) -> Result<(), String> {
+    fn append(&mut self, v: &RawColumn) -> Result<(), String> {
         let new_scale = ContinuousNumericScale::from_vec(&v.as_f64()?);
         if let Some(s) = &self.data_scale {
             self.data_scale = Some(s.union(&new_scale));
@@ -862,9 +824,9 @@ impl ScaleColorDiscrete {
 }
 
 impl Scale for ScaleColorDiscrete {
-    fn append(&mut self, v: &PlotParameter) -> Result<(), String> {
+    fn append(&mut self, v: &RawColumn) -> Result<(), String> {
         match v {
-            PlotParameter::StringArray(strings) => {
+            RawColumn::StringArray(strings) => {
                 for s in strings {
                     if !self.categories.contains(s) {
                         self.categories.push(s.clone());
@@ -887,9 +849,9 @@ impl Scale for ScaleColorDiscrete {
         Ok(())
     }
 
-    fn map(&self, v: &PlotParameter) -> Result<PlotParameter, String> {
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, String> {
         match v {
-            PlotParameter::StringArray(strings) => {
+            RawColumn::StringArray(strings) => {
                 let colors: Vec<[f32; 3]> = strings
                     .iter()
                     .map(|s| {
@@ -901,7 +863,7 @@ impl Scale for ScaleColorDiscrete {
                         self.palette[idx]
                     })
                     .collect();
-                Ok(PlotParameter::ColorArray(colors))
+                Ok(MappedColumn::ColorArray(colors))
             }
             _ => Err("ScaleColorDiscrete expects StringArray".into()),
         }
@@ -945,27 +907,25 @@ enum CoordinateSystem {
     Cartesian,
 }
 
-/// Array data types that are either provided to a plot, or produced via a
-/// transformation.
-#[derive(Clone)]
-pub enum PlotParameter {
+/// Input data columns from CSV / stat transforms — before scale mapping.
+#[derive(Clone, Debug)]
+pub enum RawColumn {
     FloatArray(Vec<f64>),
     IntArray(Vec<i64>),
     StringArray(Vec<String>),
-    ColorArray(Vec<[f32; 3]>),
-
-    // UnitArray represents post-transform position values
-    UnitArray(Vec<Unit>),
 }
-impl PlotParameter {
+
+impl RawColumn {
     pub fn len(&self) -> usize {
         match self {
             Self::FloatArray(v) => v.len(),
             Self::IntArray(v) => v.len(),
             Self::StringArray(v) => v.len(),
-            Self::ColorArray(v) => v.len(),
-            Self::UnitArray(v) => v.len(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Try to unpack values as a f64 vector
@@ -973,25 +933,67 @@ impl PlotParameter {
         match self {
             Self::FloatArray(v) => Ok(v.clone()),
             Self::IntArray(v) => Ok(v.iter().map(|i| *i as f64).collect()),
-            Self::UnitArray(v) => Ok(v
-                .iter()
-                .map(|u| match u {
-                    Unit::NDC(v) => *v as f64,
-                    Unit::Pixels(v) => *v as f64,
-                    Unit::Percent(v) => *v as f64,
-                })
-                .collect()),
             Self::StringArray(_) => Err("Cannot convert StringArray to f64".into()),
-            Self::ColorArray(_) => Err("Cannot convert ColorArray to f64".into()),
         }
     }
 }
 
-/// A structure to store the data for a plot
+/// Output of scale mapping — ready for geometry rendering.
+#[derive(Clone, Debug)]
+pub enum MappedColumn {
+    UnitArray(Vec<Unit>),
+    ColorArray(Vec<[f32; 3]>),
+}
+
+impl MappedColumn {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::UnitArray(v) => v.len(),
+            Self::ColorArray(v) => v.len(),
+        }
+    }
+}
+
+/// Aesthetic-keyed raw data (after column renaming, before scale mapping).
+#[derive(Clone)]
+pub struct AesData {
+    data: HashMap<Aesthetic, RawColumn>,
+}
+
+impl AesData {
+    pub fn new() -> Self {
+        Self {
+            data: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, aes: Aesthetic) -> Option<&RawColumn> {
+        self.data.get(&aes)
+    }
+
+    pub fn insert(&mut self, aes: Aesthetic, col: RawColumn) {
+        self.data.insert(aes, col);
+    }
+
+    pub fn contains(&self, aes: Aesthetic) -> bool {
+        self.data.contains_key(&aes)
+    }
+}
+
+/// Fully resolved data for geometry rendering.
+pub struct ResolvedData {
+    /// Scale-mapped aesthetics (X, Y, Color)
+    pub mapped: HashMap<Aesthetic, MappedColumn>,
+    /// Unscaled aesthetics (Group)
+    pub raw: HashMap<Aesthetic, RawColumn>,
+}
+
+/// Raw column data keyed by column name — used at the CSV boundary and passed into Blueprint::render().
 #[derive(Clone)]
 pub struct PlotData {
-    data: HashMap<String, PlotParameter>,
+    data: HashMap<String, RawColumn>,
 }
+
 impl PlotData {
     pub fn new() -> Self {
         Self {
@@ -1003,22 +1005,12 @@ impl PlotData {
         self.data.contains_key(key)
     }
 
-    pub fn insert(&mut self, key: String, value: PlotParameter) {
+    pub fn insert(&mut self, key: String, value: RawColumn) {
         self.data.insert(key, value);
     }
 
-    pub fn get(&self, key: &str) -> Option<&PlotParameter> {
+    pub fn get(&self, key: &str) -> Option<&RawColumn> {
         self.data.get(key)
-    }
-}
-
-/// For a layer, MappedData is parsed to specific aesthetics for a plot
-pub struct MappedData {
-    data: Vec<(Aesthetic, PlotParameter)>,
-}
-impl MappedData {
-    fn aesthetics(&self) -> Vec<Aesthetic> {
-        self.data.iter().map(|(aes, _)| *aes).collect()
     }
 }
 
@@ -1119,14 +1111,13 @@ mod test {
     #[test]
     fn scale_color_discrete_round_trip() {
         let mut scale = ScaleColorDiscrete::new();
-        let input =
-            PlotParameter::StringArray(vec!["a".into(), "b".into(), "a".into(), "c".into()]);
+        let input = RawColumn::StringArray(vec!["a".into(), "b".into(), "a".into(), "c".into()]);
         scale.append(&input).unwrap();
         scale.fit().unwrap();
 
         let mapped = scale.map(&input).unwrap();
         match mapped {
-            PlotParameter::ColorArray(colors) => {
+            MappedColumn::ColorArray(colors) => {
                 assert_eq!(colors.len(), 4);
                 // "a" appears at index 0 and 2 — same color
                 assert_eq!(colors[0], colors[2]);
@@ -1143,7 +1134,7 @@ mod test {
     fn scale_color_discrete_preserves_insertion_order() {
         let mut scale = ScaleColorDiscrete::new();
         let input =
-            PlotParameter::StringArray(vec!["banana".into(), "apple".into(), "banana".into()]);
+            RawColumn::StringArray(vec!["banana".into(), "apple".into(), "banana".into()]);
         scale.append(&input).unwrap();
         scale.fit().unwrap();
 
@@ -1158,7 +1149,7 @@ mod test {
     #[test]
     fn scale_color_discrete_rejects_float() {
         let mut scale = ScaleColorDiscrete::new();
-        let input = PlotParameter::FloatArray(vec![1.0, 2.0]);
+        let input = RawColumn::FloatArray(vec![1.0, 2.0]);
         assert!(scale.append(&input).is_err());
     }
 
@@ -1190,11 +1181,11 @@ mod test {
             .with_scale(Box::new(ScaleColorDiscrete::new()));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 3.0, 5.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0, 6.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 3.0, 5.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![2.0, 4.0, 6.0]));
         data.insert(
             "species".into(),
-            PlotParameter::StringArray(vec!["a".into(), "b".into(), "a".into()]),
+            RawColumn::StringArray(vec!["a".into(), "b".into(), "a".into()]),
         );
 
         let output = bp.render(data).expect("render should succeed");
@@ -1230,8 +1221,8 @@ mod test {
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 3.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![2.0, 4.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 3.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![2.0, 4.0]));
 
         let output = bp
             .render(data)
@@ -1256,8 +1247,8 @@ mod test {
         let mut bp = Blueprint::new(&theme).with_layer(layer);
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![3.0, 4.0]));
 
         let output = bp.render(data).expect("auto-mapping should work");
         let data_count = output
@@ -1279,11 +1270,11 @@ mod test {
         let mut bp = Blueprint::new(&theme).with_layer(layer);
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![3.0, 4.0]));
         data.insert(
             "color".into(),
-            PlotParameter::StringArray(vec!["a".into(), "b".into()]),
+            RawColumn::StringArray(vec!["a".into(), "b".into()]),
         );
 
         let output = bp
@@ -1309,8 +1300,8 @@ mod test {
         let mut bp = Blueprint::new(&theme).with_layer(layer);
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![3.0, 4.0]));
 
         let output = bp.render(data).unwrap();
         let all_text: Vec<String> = output
@@ -1356,12 +1347,12 @@ mod test {
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
         data.insert(
             "year".into(),
-            PlotParameter::FloatArray(vec![2020.0, 2021.0]),
+            RawColumn::FloatArray(vec![2020.0, 2021.0]),
         );
-        data.insert("y".into(), PlotParameter::FloatArray(vec![3.0, 4.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![3.0, 4.0]));
 
         let output = bp
             .render(data)
@@ -1396,8 +1387,8 @@ mod test {
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0, 2.0, 3.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0, 4.0, 2.0]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0, 3.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![1.0, 4.0, 2.0]));
 
         let output = bp.render(data).expect("render should succeed");
         // 3 points → 2 line segments in DataArea
@@ -1445,15 +1436,15 @@ mod test {
         let mut data = PlotData::new();
         data.insert(
             "x".into(),
-            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+            RawColumn::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
         );
         data.insert(
             "y".into(),
-            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+            RawColumn::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
         );
         data.insert(
             "grp".into(),
-            PlotParameter::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
+            RawColumn::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
         );
 
         let output = bp.render(data).expect("render should succeed");
@@ -1496,9 +1487,9 @@ mod test {
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
 
         let mut data = PlotData::new();
-        data.insert("x".into(), PlotParameter::FloatArray(vec![1.0]));
-        data.insert("y".into(), PlotParameter::FloatArray(vec![1.0]));
-        data.insert("grp".into(), PlotParameter::StringArray(vec!["a".into()]));
+        data.insert("x".into(), RawColumn::FloatArray(vec![1.0]));
+        data.insert("y".into(), RawColumn::FloatArray(vec![1.0]));
+        data.insert("grp".into(), RawColumn::StringArray(vec!["a".into()]));
 
         let output = bp.render(data).expect("single point should not panic");
         // Just verifying no panic; DataArea may be absent or empty
@@ -1539,15 +1530,15 @@ mod test {
         let mut data = PlotData::new();
         data.insert(
             "x".into(),
-            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+            RawColumn::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
         );
         data.insert(
             "y".into(),
-            PlotParameter::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
+            RawColumn::FloatArray(vec![1.0, 2.0, 3.0, 4.0]),
         );
         data.insert(
             "grp".into(),
-            PlotParameter::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
+            RawColumn::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
         );
 
         let output = bp.render(data).expect("render with color should succeed");

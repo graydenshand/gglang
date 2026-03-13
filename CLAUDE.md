@@ -32,7 +32,7 @@ The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CS
 | `src/app.rs` | wgpu window, surface, event loop, `AppState` |
 | `src/frame.rs` | Bridges `PlotOutput` to GPU — resolves layout tree, projects per-region elements through their `WindowSegment`, builds vertex/index buffers, queues text. Owns all GPU vertex types (`Vertex`, `LineVertex`, `QuadVertex`, `PointInstance`), vertex generation (`rectangle_vertices`), text-to-glyph conversion (`text_to_section`), and polyline tessellation |
 | `src/layout.rs` | Layout system: `Unit`, `WindowSegment` (with `slice_x`/`slice_y`), `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`, `PlotOutput`. Backend-agnostic (no wgpu/winit imports) |
-| `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`/`AestheticFamily` enums, `ScalePositionContinuous`, `ScaleColorDiscrete`, `GeomPoint`, `GeomLine`, `PlotData`, `Theme` |
+| `src/plot.rs` | Core domain model: `Blueprint`, `Layer`, `Geometry` trait, `Scale` trait, `Aesthetic`/`AestheticFamily` enums, `ScalePositionContinuous`, `ScaleColorDiscrete`, `GeomPoint`, `GeomLine`, `RawColumn`, `MappedColumn`, `AesData`, `ResolvedData`, `PlotData` |
 | `src/shape.rs` | Domain-level render primitives: `Rectangle`, `Text`, `PolylineData`, `PointData`, `Element` enum. Backend-agnostic (no wgpu imports) |
 | `src/transform.rs` | `ContinuousNumericScale` — linear interpolation between ranges |
 | `src/shader.wgsl` | WGSL shaders: general pass-through (`vs_main`/`fs_main`), instanced SDF points (`vs_point_instanced`/`fs_point`), miter-join polylines (`vs_line`/`fs_line` with `fwidth` AA) |
@@ -87,13 +87,14 @@ Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; g
 - **Theme is borrowed, not owned** by `Blueprint` — themes affect things beyond the plot scope (window margin, background) and may be shared across multiple plots.
 - **`Element` enum** (`Rect | Point | Polyline | Text`) unifies geometry at the render boundary. All variants carry domain-level data (positions in `Unit` coords); `Frame` converts them to GPU-specific formats (vertices, instanced quads, tessellated triangle meshes).
 - **`Mapping` is a struct** `{ aesthetic: Aesthetic, variable: String }` — extensible to any aesthetic channel. `Aesthetic` and `AestheticFamily` are enums, not traits.
+- **Split data pipeline types**: `RawColumn` (input: `FloatArray`/`IntArray`/`StringArray`) and `MappedColumn` (output: `UnitArray`/`ColorArray`) replace the old unified `PlotParameter`. `AesData` (`HashMap<Aesthetic, RawColumn>`) is produced by the column-rename step; `ResolvedData` (`mapped: HashMap<Aesthetic, MappedColumn>`, `raw: HashMap<Aesthetic, RawColumn>`) is produced by bulk scale mapping and passed to `Geometry::render()`. `PlotData` (`HashMap<String, RawColumn>`) remains the CSV boundary type. `Scale::map()` takes `&RawColumn → Result<MappedColumn>`, eliminating in-geom scale lookups.
 
 ## Issues and project planning
 
 Open architectural issues are in `proj/issues/`:
 - ~~`issue-layout-tree.md`~~ — ✅ Done
 - ~~`issue-render-backend-abstraction.md`~~ — ✅ Done (phase 1: `shape.rs` and `layout.rs` fully backend-agnostic; GPU types live in `frame.rs`)
-- `issue-plotdata-typing.md` — stronger typing through the data pipeline
+- ~~`issue-plotdata-typing.md`~~ — ✅ Done (`RawColumn`/`MappedColumn`/`AesData`/`ResolvedData` split; bulk mapping centralized in `Blueprint::render()`)
 - ~~`issue-shader-architecture.md`~~ — ✅ Done (view transform uniform, instanced SDF points, miter-join polylines, separate pipelines)
 
 Active work tracked in `proj/backlog.md`. Design notes and language examples in `docs/` and `proj/ideas/`.
