@@ -1,21 +1,46 @@
 # Roadmap
 
-## Tier 1 — Expand the grammar of graphics
+## Completed
+1. ~~**Plot labels**~~ -- Add plot title, axis ticks, axis labels, and caption
+2. ~~**Scale generalization**~~ — Unified into `ScalePositionContinuous`; `Aesthetic`, `AestheticFamily`, `Mapping` as enums/structs.
+3. ~~**Color segmentation**~~ — `ScaleColorDiscrete`, `Aesthetic::Color`, mixed-type CSV, legend rendering.
+4. ~~**Timeseries traces**~~ — `GeomLine` with `group` aesthetic, per-group coloring.
+5. ~~**Layout tree**~~ — `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`, `slice_x`/`slice_y` subdivision.
+6. ~~**Shader architecture**~~ — View transform uniform, instanced SDF points, miter-join polylines, three render pipelines.
+7. ~~**Render backend abstraction (phase 1)**~~ — `shape.rs` and `layout.rs` fully backend-agnostic; GPU types confined to `frame.rs`.
+8. ~~**PlotData typing**~~ — `RawColumn`/`MappedColumn`/`AesData`/`ResolvedData` split; compile-time pipeline guarantees.
 
-1. ~~**Scale generalization**~~ (`issues/issue-scale-generalization.md`) — ✅ Done. Unified `ScaleXContinuous`/`ScaleYContinuous` into `ScalePositionContinuous`; `Aesthetic`, `AestheticFamily`, `Mapping` are now enums/structs instead of traits.
+## Current sprint
 
-2. **Segmenting scatterplots** (`stories/segmenting_scatterplots.md`) — Color ✅ done (`ScaleColorDiscrete`, `Aesthetic::Color`, mixed-type CSV, legend rendering). Shape deferred — requires new `Shape` implementations and shader architecture work. Faceting deferred, requires layout tree.
+1. **Split plot module** (`issues/issue-split-plot-module.md`) — Break `plot.rs` into `geom.rs`, `scale.rs`, `aesthetic.rs` for navigability before adding new types.
 
-## Tier 2 — New geom types and deeper architecture
+2. **Geom attribute syntax** (`issues/issue-geom-attribute-syntax.md`) — Grammar + compiler support for `GEOM TYPE { key=value, ... }` blocks. Shared infra for hardcoded aesthetics and per-layer mappings.
 
-3. ~~**Timeseries traces**~~ (`stories/timeseries_traces.md`) — ✅ Done. `GeomLine` with `group` aesthetic for partitioning series, `LineSegment` shape primitive, `Aesthetic::Group` / `AestheticFamily::Group` (no scale — partitions only). Works with `color` aesthetic for per-group coloring.
+3. **Hardcoded aesthetics** (`stories/hardcoded_aesthetics.md`) — Set constant aesthetic values on a layer, e.g. `GEOM POINT { color="#0000FF" }`.
 
-4. ~~**Layout tree**~~ (`issues/issue-layout-tree.md`) — ✅ Done. Tree-based layout system with `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`. `Unit` and `WindowSegment` moved to `layout.rs` with `slice_x`/`slice_y` subdivision. `Blueprint::render()` returns `PlotOutput` (elements partitioned by region + layout tree). `Frame` resolves layout and projects each region through its own `WindowSegment`. Eliminates all out-of-bounds NDC positioning. Faceting support is now unblocked.
+4. **Per-layer mappings** (`stories/per_layer_mappings.md`) — Override plot-level defaults on individual layers, e.g. `GEOM LINE { color=:region }`.
 
-## Tier 3 — Performance and polish (defer)
+5. **Faceting** (`stories/faceting.md`) — `FACET BY :var` splits data into a grid of sub-plots. Exercises the layout tree with real multi-panel rendering.
 
-5. ~~**Shader architecture**~~ (`issues/issue-shader-architecture.md`) — ✅ Done. View transform uniform (identity, unblocks future pan/zoom). GPU instancing for `GeomPoint` (shared quad + per-point instance buffer, SDF anti-aliased circles). Miter-join polyline rendering for `GeomLine` (CPU-tessellated triangle strips with per-vertex edge distance, `fwidth()`-based AA). Three separate render pipelines: general (rectangles/axes/ticks), point (instanced SDF circles), line (tessellated polylines). Alpha blending enabled on all pipelines.
+## Backlog — Features
 
-6. ~~**Render backend abstraction**~~ (`issues/issue-render-backend-abstraction.md`) — ✅ Done (phase 1). `shape.rs` and `layout.rs` are now fully backend-agnostic (zero `wgpu`/`winit` imports). All GPU vertex types (`Vertex`, `LineVertex`, `QuadVertex`, `PointInstance`), vertex generation (`rectangle_vertices`), and text-to-glyph conversion (`text_to_section`) moved to `frame.rs`. `Shape` trait eliminated; `Element::Shape(Box<dyn Shape>)` replaced with `Element::Rect(Rectangle)`. `WindowSegment::new_root` takes `(width, height)` instead of `Arc<Window>`. `plot.rs` tests run without a GPU device. Phase 2 (SVG/PNG export backend) is future work.
+- **Geom bar** (`stories/geom_bar.md`) — Bar charts with stat count/identity, stack/dodge positioning. Blocked on `ScalePositionDiscrete`.
+- **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. Requires new SDF functions in the point shader.
+- **Size aesthetic** (`stories/size_aesthetic.md`) — Map numeric variable to point radius for bubble charts.
+- **Alpha aesthetic** (`stories/alpha_aesthetic.md`) — Control transparency, mapped or constant.
+- **Multi-legend layout** (`stories/multi_legend.md`) — Stack multiple legends (color, shape, size) in the legend region. Stress-tests layout.
+- **Polar coordinates** (`stories/coord_polar.md`) — `COORD POLAR` transform for pie charts, radar plots, rose diagrams.
+- **Zoom & pan** (`stories/zoom_pan.md`) — Activate the view transform uniform with mouse/trackpad input.
 
-7. ~~**PlotData typing**~~ (`issues/issue-plotdata-typing.md`) —  ✅ Done. Compile-time guarantees across pipeline stages.
+## Backlog — Infrastructure
+
+- **Error handling** (`issues/issue-error-handling.md`) — Replace `.unwrap()`/`.expect()` panics with `Result` propagation and structured errors.
+- **ScalePositionDiscrete** (`issues/issue-scale-position-discrete.md`) — Categorical position scale for bar charts and dot plots.
+- **Log scale** (`issues/issue-scale-log.md`) — `ScaleLogContinuous` + `SCALE` statement grammar support.
+- **SVG/PNG export** (`issues/issue-svg-export.md`) — Phase 2 render backend: produce SVG/PNG without a GPU.
+
+## Backlog — Integrations
+
+- **Python bindings** (`stories/python_bindings.md`) — PyO3/maturin, DataFrame ingestion, SVG output for notebooks.
+- **WASM target** (`stories/wasm_target.md`) — Browser embedding via WebGPU/WebGL.
+- **Data-viz studio** (`stories/data_viz_studio.md`) — Local-first app combining DuckDB + gglang. Separate crate consuming gglang as a library.
