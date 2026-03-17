@@ -4,6 +4,10 @@ This file contains instructions for Claude for working with this repo.
 
 As you make changes, keep this file up to date with the useful context to help you and others.
 
+./proj contains files related to project management; issues are in ./proj/issues and ./proj/stories contains user stories.
+We'll work off of ./proj/roadmap.md; as you make changes, keep these up to date (delete tickets that are completed,
+update roadmap doc to reflect current status).
+
 ## Project Overview
 
 A ggplot2-inspired statistical graphics engine written in Rust, using wgpu for GPU-accelerated rendering. The system has two components: a DSL compiler for a language called GQL (Grammar of Graphics Language), and a rendering engine that produces plots from a `Blueprint` specification.
@@ -14,6 +18,7 @@ Goals:
 - High-performance native rendering suitable for large datasets and interactivity
 - Grammar-of-graphics compositional model (layers, scales, aesthetics, stats, facets)
 - Deviations from ggplot2: data is decoupled from the plot definition (passed at render time, not embedded); lower-level channel mappings (e.g. `width`/`height` separate from `size`); less reliance on tidy data
+
 
 ## Current state
 

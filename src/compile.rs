@@ -1,5 +1,8 @@
+use crate::aesthetic::{Aesthetic, Mapping};
 use crate::ast::{AstAesthetic, GeometryType, Program, Statement};
-use crate::plot::{Aesthetic, Blueprint, GeomLine, GeomPoint, IdentityTransform, Layer, Mapping};
+use crate::geom::{GeomLine, GeomPoint};
+use crate::plot::{Blueprint, Layer};
+use crate::scale::{default_scale_for, IdentityTransform};
 use crate::theme::Theme;
 
 pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
@@ -55,7 +58,7 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     for aes in &mapped_aesthetics {
         let family = aes.family();
         if !bp.has_scale_for_family(family) {
-            if let Some(scale) = aes.default_scale() {
+            if let Some(scale) = default_scale_for(aes) {
                 bp = bp.with_scale(scale);
             }
         }

@@ -43,13 +43,17 @@ Layer 4
 
 */
 
+pub mod aesthetic;
 pub mod app;
 pub mod ast;
+pub mod column;
 pub mod compile;
 pub mod data;
 mod frame;
+pub mod geom;
 pub mod layout;
 pub mod plot;
+pub mod scale;
 mod shape;
 pub mod theme;
 pub mod transform;

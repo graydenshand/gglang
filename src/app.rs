@@ -4,7 +4,8 @@ use std::{iter, sync::Arc, vec};
 
 use crate::frame::Frame;
 use crate::layout::PlotOutput;
-use crate::plot::{Blueprint, PlotData};
+use crate::column::PlotData;
+use crate::plot::Blueprint;
 use crate::theme::Theme;
 use glyph_brush::ab_glyph::FontRef;
 use winit::{

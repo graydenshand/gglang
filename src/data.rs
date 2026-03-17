@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::plot::{PlotData, RawColumn};
+use crate::column::{PlotData, RawColumn};
 
 pub fn load_csv(path: &Path) -> Result<PlotData, String> {
     let content =

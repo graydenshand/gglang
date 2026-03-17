@@ -12,7 +12,7 @@
 
 ## Current sprint
 
-1. **Split plot module** (`issues/issue-split-plot-module.md`) — Break `plot.rs` into `geom.rs`, `scale.rs`, `aesthetic.rs` for navigability before adding new types.
+1. ~~**Split plot module**~~ (`issues/issue-split-plot-module.md`) — Break `plot.rs` into `geom.rs`, `scale.rs`, `aesthetic.rs` for navigability before adding new types.
 
 2. **Geom attribute syntax** (`issues/issue-geom-attribute-syntax.md`) — Grammar + compiler support for `GEOM TYPE { key=value, ... }` blocks. Shared infra for hardcoded aesthetics and per-layer mappings.
 
