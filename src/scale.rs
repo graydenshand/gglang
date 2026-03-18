@@ -1,7 +1,7 @@
 use crate::aesthetic::{Aesthetic, AestheticFamily};
 use crate::column::{AesData, MappedColumn, RawColumn};
 use crate::layout::{PlotRegion, Unit};
-use crate::shape::{Element, Rectangle, Text, VAlign};
+use crate::shape::{Element, HAlign, Rectangle, Text, VAlign};
 use crate::theme::Theme;
 use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
 
@@ -35,6 +35,53 @@ pub trait Scale {
 
     /// Create a fresh, unfitted copy of this scale (same type/axis, no data).
     fn clone_unfitted(&self) -> Box<dyn Scale>;
+}
+
+/// Format a set of tick values with consistent suffix and just enough decimal places
+/// that consecutive ticks are distinguishable.
+///
+/// Suffix is chosen from the largest absolute value; precision is derived from the
+/// step size so that e.g. [1.38M, 1.40M, 1.42M] never collapses to ["1.4M", "1.4M", "1.4M"].
+fn format_ticks(values: &[f64]) -> Vec<String> {
+    if values.is_empty() {
+        return vec![];
+    }
+
+    let max_abs = values.iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
+    let (divisor, suffix) = if max_abs >= 1_000_000_000.0 {
+        (1_000_000_000.0, "B")
+    } else if max_abs >= 1_000_000.0 {
+        (1_000_000.0, "M")
+    } else if max_abs >= 10_000.0 {
+        (1_000.0, "K")
+    } else {
+        (1.0, "")
+    };
+
+    // Minimum decimal places to make consecutive ticks distinct after scaling
+    let decimals: usize = if values.len() >= 2 {
+        let step = (values[1] - values[0]).abs() / divisor;
+        if step > 0.0 {
+            let d = (-step.log10().floor()) as i32;
+            d.max(0).min(6) as usize
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    values.iter().map(|&v| {
+        if v == 0.0 {
+            return "0".to_string();
+        }
+        let scaled = v / divisor;
+        if decimals == 0 {
+            format!("{}{}", scaled as i64, suffix)
+        } else {
+            format!("{:.prec$}{}", scaled, suffix, prec = decimals)
+        }
+    }).collect()
 }
 
 /// Which axis a positional scale operates on.
@@ -71,8 +118,10 @@ impl ScalePositionContinuous {
         elements.push(Element::Rect(xaxis));
 
         let s = &self.data_scale.expect("Scale isn't fit");
-        for tick_value in nice_ticks(s.min, s.max, 5) {
-            let x_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
+        let tick_values = nice_ticks(s.min, s.max, 5);
+        let labels = format_ticks(&tick_values);
+        for (tick_value, label) in tick_values.iter().zip(labels) {
+            let x_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
 
             // Tick mark hangs down from top edge
             let tick = Rectangle::new(
@@ -83,11 +132,6 @@ impl ScalePositionContinuous {
             );
             elements.push(Element::Rect(tick));
 
-            let label = if tick_value.fract() == 0.0 {
-                format!("{}", tick_value as i64)
-            } else {
-                format!("{:.1}", tick_value)
-            };
             // Tick label just below tick marks
             elements.push(Element::Text(Text::centered(
                 label,
@@ -112,8 +156,10 @@ impl ScalePositionContinuous {
         elements.push(Element::Rect(yaxis));
 
         let s = &self.data_scale.expect("Scale isn't fit");
-        for tick_value in nice_ticks(s.min, s.max, 5) {
-            let y_ndc = s.map_position(&NDC_SCALE, tick_value) as f32;
+        let tick_values = nice_ticks(s.min, s.max, 5);
+        let labels = format_ticks(&tick_values);
+        for (tick_value, label) in tick_values.iter().zip(labels) {
+            let y_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
 
             // Tick mark protrudes left from right edge
             let tick = Rectangle::new(
@@ -123,19 +169,14 @@ impl ScalePositionContinuous {
                 theme.axis_color,
             );
             elements.push(Element::Rect(tick));
-
-            let label = if tick_value.fract() == 0.0 {
-                format!("{}", tick_value as i64)
-            } else {
-                format!("{:.1}", tick_value)
-            };
-            // Tick label vertically centered on tick mark
+            // Tick label: right-aligned, flush against the tick mark with a small gap
             elements.push(Element::Text(
-                Text::centered(
+                Text::new(
                     label,
                     theme.tick_label_font_size,
-                    (Unit::NDC(0.5), Unit::NDC(y_ndc)),
+                    (Unit::Percent(85.0), Unit::NDC(y_ndc)),
                 )
+                .with_h_align(HAlign::Right)
                 .with_v_align(VAlign::Center),
             ));
         }

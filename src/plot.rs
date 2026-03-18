@@ -352,15 +352,17 @@ impl<'a> Blueprint<'a> {
                     .iter()
                     .any(|s| s.aesthetic_family() == AestheticFamily::Color);
                 let layout = match &spec {
-                    FacetSpec::Wrap { variable, columns, .. } => {
+                    FacetSpec::Wrap { variable, columns, scales } => {
                         let facet_col = raw_data.get(variable).unwrap();
                         let num_panels = facet_col.distinct_strings().len();
+                        let y_free = matches!(scales, ScaleFreedom::Free | ScaleFreedom::FreeY);
                         faceted_wrap_layout(
                             num_panels,
                             *columns,
                             self.title.is_some(),
                             self.caption.is_some(),
                             has_legend,
+                            y_free,
                             self.theme,
                         )
                     }
@@ -533,22 +535,18 @@ impl<'a> Blueprint<'a> {
         // Per-row Y-axis
         let num_rows = (num_panels + num_cols - 1) / num_cols;
         if y_free {
-            // First column of each row gets Y-axis ticks from its free scale
+            // Every panel gets its own Y-axis ticks keyed by panel_idx
             for (panel_idx, _) in facet_values.iter().enumerate() {
-                let col = panel_idx % num_cols;
-                if col == 0 {
-                    let scale_refs = self.build_wrap_panel_scale_refs(
-                        x_free, y_free, &panel_scales[panel_idx],
-                    );
-                    let row = panel_idx / num_cols;
-                    for scale in &scale_refs {
-                        let (region, mut scale_elements) = scale.render(self.theme);
-                        if region == PlotRegion::YAxisGutter {
-                            regions
-                                .entry(RegionKey::panel(PlotRegion::YAxisGutter, row))
-                                .or_default()
-                                .append(&mut scale_elements);
-                        }
+                let scale_refs = self.build_wrap_panel_scale_refs(
+                    x_free, y_free, &panel_scales[panel_idx],
+                );
+                for scale in &scale_refs {
+                    let (region, mut scale_elements) = scale.render(self.theme);
+                    if region == PlotRegion::YAxisGutter {
+                        regions
+                            .entry(RegionKey::panel(PlotRegion::YAxisGutter, panel_idx))
+                            .or_default()
+                            .append(&mut scale_elements);
                     }
                 }
             }
@@ -1124,6 +1122,7 @@ fn faceted_wrap_layout(
     has_title: bool,
     has_caption: bool,
     has_legend: bool,
+    y_free: bool,
     theme: &Theme,
 ) -> LayoutNode {
     let num_cols = facet_columns
@@ -1134,16 +1133,21 @@ fn faceted_wrap_layout(
 
     let mut grid_rows: Vec<(SizeSpec, LayoutNode)> = Vec::new();
     for row in 0..num_rows {
-        let y_gutter_col = LayoutNode::Split {
-            axis: SplitAxis::Vertical,
-            children: vec![
-                (SizeSpec::Pixels(theme.facet_label_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
-                (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::panel(PlotRegion::YAxisGutter, row))),
-                (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
-            ],
-        };
-
         let mut row_cells: Vec<(SizeSpec, LayoutNode)> = Vec::new();
+
+        if !y_free {
+            // Shared per-row y-axis gutter on the left
+            let y_gutter_col = LayoutNode::Split {
+                axis: SplitAxis::Vertical,
+                children: vec![
+                    (SizeSpec::Pixels(theme.facet_label_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
+                    (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::panel(PlotRegion::YAxisGutter, row))),
+                    (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
+                ],
+            };
+            row_cells.push((SizeSpec::Pixels(theme.y_gutter_width), y_gutter_col));
+        }
+
         for col in 0..num_cols {
             if col > 0 {
                 row_cells.push((SizeSpec::Pixels(theme.facet_gap), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))));
@@ -1153,30 +1157,44 @@ fn faceted_wrap_layout(
                 row_cells.push((SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))));
                 continue;
             }
-            row_cells.push((SizeSpec::Flex(1.0), LayoutNode::Split {
+
+            let content_node = LayoutNode::Split {
                 axis: SplitAxis::Vertical,
                 children: vec![
                     (SizeSpec::Pixels(theme.facet_label_height), LayoutNode::Leaf(RegionKey::panel(PlotRegion::FacetLabel, panel_idx))),
                     (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::panel(PlotRegion::DataArea, panel_idx))),
                     (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(RegionKey::panel(PlotRegion::XAxisGutter, panel_idx))),
                 ],
-            }));
+            };
+
+            let panel_node = if y_free {
+                // Each panel gets its own y-axis gutter on the left
+                let y_gutter_node = LayoutNode::Split {
+                    axis: SplitAxis::Vertical,
+                    children: vec![
+                        (SizeSpec::Pixels(theme.facet_label_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
+                        (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::panel(PlotRegion::YAxisGutter, panel_idx))),
+                        (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
+                    ],
+                };
+                LayoutNode::Split {
+                    axis: SplitAxis::Horizontal,
+                    children: vec![
+                        (SizeSpec::Pixels(theme.y_gutter_width), y_gutter_node),
+                        (SizeSpec::Flex(1.0), content_node),
+                    ],
+                }
+            } else {
+                content_node
+            };
+
+            row_cells.push((SizeSpec::Flex(1.0), panel_node));
         }
 
-        let panel_grid = LayoutNode::Split {
+        grid_rows.push((SizeSpec::Flex(1.0), LayoutNode::Split {
             axis: SplitAxis::Horizontal,
             children: row_cells,
-        };
-
-        let row_node = LayoutNode::Split {
-            axis: SplitAxis::Horizontal,
-            children: vec![
-                (SizeSpec::Pixels(theme.y_gutter_width), y_gutter_col),
-                (SizeSpec::Flex(1.0), panel_grid),
-            ],
-        };
-
-        grid_rows.push((SizeSpec::Flex(1.0), row_node));
+        }));
     }
 
     let grid = LayoutNode::Split {
@@ -1201,7 +1219,7 @@ fn faceted_wrap_layout(
     };
 
     let mut main_columns: Vec<(SizeSpec, LayoutNode)> = vec![
-        (SizeSpec::Pixels(theme.y_gutter_width), y_label_column),
+        (SizeSpec::Pixels(theme.y_axis_label_width), y_label_column),
         (SizeSpec::Flex(1.0), grid_with_x_label),
     ];
 
@@ -1349,7 +1367,7 @@ fn faceted_grid_layout(
     };
 
     let mut main_columns: Vec<(SizeSpec, LayoutNode)> = vec![
-        (SizeSpec::Pixels(theme.y_gutter_width), y_label_column),
+        (SizeSpec::Pixels(theme.y_axis_label_width), y_label_column),
         (SizeSpec::Flex(1.0), grid_with_x_label),
     ];
 

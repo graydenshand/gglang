@@ -173,6 +173,7 @@ fn text_to_section<'a>(
     let h_align = match text.h_align {
         HAlign::Left => wgpu_text::glyph_brush::HorizontalAlign::Left,
         HAlign::Center => wgpu_text::glyph_brush::HorizontalAlign::Center,
+        HAlign::Right => wgpu_text::glyph_brush::HorizontalAlign::Right,
     };
     let v_align = match text.v_align {
         VAlign::Top => wgpu_text::glyph_brush::VerticalAlign::Top,

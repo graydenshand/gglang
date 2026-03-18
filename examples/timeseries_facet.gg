@@ -1,7 +1,7 @@
-MAP x=:day, y=:price
+MAP x=:year, y=:population
 GEOM LINE
 GEOM POINT
-FACET GRID ROWS :ticker SCALES FREE Y
-TITLE "Stock Prices"
-XLABEL "Day"
-YLABEL "Price"
+FACET WRAP :state SCALES FREE Y
+TITLE "U.S. State Populations, 2020-2025"
+XLABEL "Year"
+YLABEL "Population"

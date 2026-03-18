@@ -40,6 +40,7 @@ pub enum HAlign {
     #[default]
     Left,
     Center,
+    Right,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -86,6 +87,11 @@ impl Text {
 
     pub fn with_wrap(mut self) -> Self {
         self.wrap = true;
+        self
+    }
+
+    pub fn with_h_align(mut self, h_align: HAlign) -> Self {
+        self.h_align = h_align;
         self
     }
 

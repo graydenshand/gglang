@@ -34,6 +34,9 @@
 
 ## Backlog — Infrastructure
 
+- **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references, stackable so a base company theme can be extended per-plot.
+
+
 - **Error handling** (`issues/issue-error-handling.md`) — Replace `.unwrap()`/`.expect()` panics with `Result` propagation and structured errors.
 - **ScalePositionDiscrete** (`issues/issue-scale-position-discrete.md`) — Categorical position scale for bar charts and dot plots.
 - **Log scale** (`issues/issue-scale-log.md`) — `ScaleLogContinuous` + `SCALE` statement grammar support.
