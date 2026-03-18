@@ -69,11 +69,8 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                     Box::new(IdentityTransform),
                 ));
             }
-            Statement::Facet(variable, columns) => {
-                bp = bp.with_facet(variable.clone());
-                if let Some(n) = columns {
-                    bp = bp.with_facet_columns(*n);
-                }
+            Statement::Facet(spec) => {
+                bp = bp.with_facet_spec(spec.clone());
             }
             Statement::Title(s) => bp = bp.with_title(s.clone()),
             Statement::Caption(s) => bp = bp.with_caption(s.clone()),

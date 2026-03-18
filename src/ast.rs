@@ -10,11 +10,33 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScaleFreedom {
+    Fixed,
+    FreeX,
+    FreeY,
+    Free,
+}
+
+#[derive(Debug, Clone)]
+pub enum FacetSpec {
+    Wrap {
+        variable: String,
+        columns: Option<u32>,
+        scales: ScaleFreedom,
+    },
+    Grid {
+        row_var: Option<String>,
+        col_var: Option<String>,
+        scales: ScaleFreedom,
+    },
+}
+
 #[derive(Debug)]
 pub enum Statement {
     Map(Vec<DataMapping>),
     Geom(GeometryType, Vec<GeomAttribute>),
-    Facet(String, Option<u32>),
+    Facet(FacetSpec),
     Title(String),
     Caption(String),
     XLabel(String),
@@ -51,6 +73,31 @@ pub enum AstAesthetic {
 pub enum GeometryType {
     Point,
     Line,
+}
+
+fn parse_data_reference(pair: pest::iterators::Pair<Rule>) -> String {
+    pair.into_inner()
+        .next()
+        .unwrap()
+        .as_str()
+        .to_string()
+}
+
+fn parse_facet_scales(pair: pest::iterators::Pair<Rule>) -> ScaleFreedom {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::free_axis => {
+            let axis = inner.as_str().trim();
+            if axis.ends_with('X') {
+                ScaleFreedom::FreeX
+            } else {
+                ScaleFreedom::FreeY
+            }
+        }
+        Rule::free_both => ScaleFreedom::Free,
+        Rule::fixed_scales => ScaleFreedom::Fixed,
+        _ => unreachable!(),
+    }
 }
 
 pub fn parse(source: &str) -> Result<Program, String> {
@@ -154,23 +201,60 @@ pub fn parse(source: &str) -> Result<Program, String> {
                         statements.push(Statement::Geom(geom_type, attrs));
                     }
                     Rule::facet_statement => {
-                        let mut inner = stmt_inner.into_inner();
-                        let data_ref = inner.next().unwrap();
-                        let variable = data_ref
-                            .into_inner()
-                            .next()
-                            .unwrap()
-                            .as_str()
-                            .to_string();
-                        let columns = inner.next().and_then(|pair| {
-                            if pair.as_rule() == Rule::facet_columns {
-                                let n: u32 = pair.into_inner().next().unwrap().as_str().parse().unwrap();
-                                Some(n)
-                            } else {
-                                None
+                        let facet_inner = stmt_inner.into_inner().next().unwrap();
+                        let spec = match facet_inner.as_rule() {
+                            Rule::facet_wrap => {
+                                let mut inner = facet_inner.into_inner();
+                                let variable = parse_data_reference(inner.next().unwrap());
+                                let mut columns = None;
+                                let mut scales = ScaleFreedom::Fixed;
+                                for pair in inner {
+                                    match pair.as_rule() {
+                                        Rule::facet_columns => {
+                                            let n: u32 = pair.into_inner().next().unwrap().as_str().parse().unwrap();
+                                            columns = Some(n);
+                                        }
+                                        Rule::facet_scales => {
+                                            scales = parse_facet_scales(pair);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                FacetSpec::Wrap { variable, columns, scales }
                             }
-                        });
-                        statements.push(Statement::Facet(variable, columns));
+                            Rule::facet_grid => {
+                                let mut inner = facet_inner.into_inner();
+                                let grid_spec = inner.next().unwrap();
+                                let (row_var, col_var) = match grid_spec.as_rule() {
+                                    Rule::facet_rows_cols => {
+                                        let mut gi = grid_spec.into_inner();
+                                        let row = parse_data_reference(gi.next().unwrap());
+                                        let col = parse_data_reference(gi.next().unwrap());
+                                        (Some(row), Some(col))
+                                    }
+                                    Rule::facet_rows_only => {
+                                        let mut gi = grid_spec.into_inner();
+                                        let row = parse_data_reference(gi.next().unwrap());
+                                        (Some(row), None)
+                                    }
+                                    Rule::facet_cols_only => {
+                                        let mut gi = grid_spec.into_inner();
+                                        let col = parse_data_reference(gi.next().unwrap());
+                                        (None, Some(col))
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                let mut scales = ScaleFreedom::Fixed;
+                                for pair in inner {
+                                    if pair.as_rule() == Rule::facet_scales {
+                                        scales = parse_facet_scales(pair);
+                                    }
+                                }
+                                FacetSpec::Grid { row_var, col_var, scales }
+                            }
+                            _ => unreachable!(),
+                        };
+                        statements.push(Statement::Facet(spec));
                     }
                     Rule::title_statement => {
                         let s = stmt_inner.into_inner().next().unwrap().as_str();
@@ -342,29 +426,150 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_facet() {
-        let source = "MAP x=:x, y=:y\nGEOM POINT\nFACET BY :region";
+    fn test_parse_facet_wrap() {
+        let source = "MAP x=:x, y=:y\nGEOM POINT\nFACET WRAP :region";
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 3);
         match &program.statements[2] {
-            Statement::Facet(var, cols) => {
-                assert_eq!(var, "region");
-                assert!(cols.is_none());
+            Statement::Facet(FacetSpec::Wrap { variable, columns, scales }) => {
+                assert_eq!(variable, "region");
+                assert!(columns.is_none());
+                assert_eq!(*scales, ScaleFreedom::Fixed);
             }
-            _ => panic!("Expected Facet statement"),
+            _ => panic!("Expected Facet Wrap statement"),
         }
     }
 
     #[test]
-    fn test_parse_facet_with_columns() {
-        let source = "FACET BY :group COLUMNS 3";
+    fn test_parse_facet_wrap_with_columns() {
+        let source = "FACET WRAP :group COLUMNS 3";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(var, cols) => {
-                assert_eq!(var, "group");
-                assert_eq!(*cols, Some(3));
+            Statement::Facet(FacetSpec::Wrap { variable, columns, scales }) => {
+                assert_eq!(variable, "group");
+                assert_eq!(*columns, Some(3));
+                assert_eq!(*scales, ScaleFreedom::Fixed);
             }
-            _ => panic!("Expected Facet statement"),
+            _ => panic!("Expected Facet Wrap statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_wrap_scales_free() {
+        let source = "FACET WRAP :store SCALES FREE";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Wrap { variable, scales, .. }) => {
+                assert_eq!(variable, "store");
+                assert_eq!(*scales, ScaleFreedom::Free);
+            }
+            _ => panic!("Expected Facet Wrap with FREE scales"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_wrap_scales_free_x() {
+        let source = "FACET WRAP :store SCALES FREE X";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Wrap { scales, .. }) => {
+                assert_eq!(*scales, ScaleFreedom::FreeX);
+            }
+            _ => panic!("Expected Facet Wrap with FREE X scales"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_wrap_scales_free_y() {
+        let source = "FACET WRAP :store SCALES FREE Y";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Wrap { scales, .. }) => {
+                assert_eq!(*scales, ScaleFreedom::FreeY);
+            }
+            _ => panic!("Expected Facet Wrap with FREE Y scales"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_wrap_scales_fixed() {
+        let source = "FACET WRAP :store SCALES FIXED";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Wrap { scales, .. }) => {
+                assert_eq!(*scales, ScaleFreedom::Fixed);
+            }
+            _ => panic!("Expected Facet Wrap with FIXED scales"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_wrap_columns_and_scales() {
+        let source = "FACET WRAP :store COLUMNS 3 SCALES FREE";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Wrap { variable, columns, scales }) => {
+                assert_eq!(variable, "store");
+                assert_eq!(*columns, Some(3));
+                assert_eq!(*scales, ScaleFreedom::Free);
+            }
+            _ => panic!("Expected Facet Wrap with columns and scales"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_grid_rows_only() {
+        let source = "FACET GRID ROWS :store";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+                assert_eq!(row_var.as_deref(), Some("store"));
+                assert!(col_var.is_none());
+                assert_eq!(*scales, ScaleFreedom::Fixed);
+            }
+            _ => panic!("Expected Facet Grid with rows only"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_grid_cols_only() {
+        let source = "FACET GRID COLS :town";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+                assert!(row_var.is_none());
+                assert_eq!(col_var.as_deref(), Some("town"));
+                assert_eq!(*scales, ScaleFreedom::Fixed);
+            }
+            _ => panic!("Expected Facet Grid with cols only"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_grid_rows_cols() {
+        let source = "FACET GRID ROWS :store COLS :town";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+                assert_eq!(row_var.as_deref(), Some("store"));
+                assert_eq!(col_var.as_deref(), Some("town"));
+                assert_eq!(*scales, ScaleFreedom::Fixed);
+            }
+            _ => panic!("Expected Facet Grid with rows and cols"),
+        }
+    }
+
+    #[test]
+    fn test_parse_facet_grid_with_scales() {
+        let source = "FACET GRID ROWS :store COLS :town SCALES FREE X";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+                assert_eq!(row_var.as_deref(), Some("store"));
+                assert_eq!(col_var.as_deref(), Some("town"));
+                assert_eq!(*scales, ScaleFreedom::FreeX);
+            }
+            _ => panic!("Expected Facet Grid with scales"),
         }
     }
 

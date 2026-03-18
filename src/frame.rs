@@ -4,9 +4,10 @@ use winit::window::Window;
 
 use crate::layout::{PlotOutput, WindowSegment};
 use crate::theme::Theme;
-use crate::shape::{Element, HAlign, Rectangle, Text, VAlign};
+use crate::shape::{Element, HAlign, Rectangle, Text, TextRotation, VAlign};
 use crate::transform::ContinuousNumericScale;
 
+use std::collections::HashMap;
 use wgpu_text::{
     glyph_brush::Section as TextSection,
     Matrix, TextBrush,
@@ -166,6 +167,7 @@ fn rectangle_vertices(rect: &Rectangle, segment: &WindowSegment) -> Vec<Vertex> 
 fn text_to_section<'a>(
     text: &'a Text,
     segment: &WindowSegment,
+    window_width: f32,
     window_height: f32,
 ) -> wgpu_text::glyph_brush::Section<'a> {
     let h_align = match text.h_align {
@@ -186,10 +188,10 @@ fn text_to_section<'a>(
         max: segment.pixel_scale_y.min,
     };
     let y = segment.ndc_scale_y.map_position(&flipped_pixel_y, y_ndc.into());
-    let position = if text.rotated {
-        (window_height - y as f32, x as f32)
-    } else {
-        (x as f32, y as f32)
+    let position = match text.rotation {
+        TextRotation::None => (x as f32, y as f32),
+        TextRotation::Ccw90 => (window_height - y as f32, x as f32),
+        TextRotation::Cw90 => (y as f32, window_width - x as f32),
     };
 
     let layout = if text.wrap {
@@ -202,10 +204,9 @@ fn text_to_section<'a>(
             .v_align(v_align)
     };
     let bounds = if text.wrap {
-        if text.rotated {
-            (segment.pixel_scale_y.span() as f32, segment.pixel_scale_x.span() as f32)
-        } else {
-            (segment.pixel_scale_x.span() as f32, segment.pixel_scale_y.span() as f32)
+        match text.rotation {
+            TextRotation::None => (segment.pixel_scale_x.span() as f32, segment.pixel_scale_y.span() as f32),
+            TextRotation::Ccw90 | TextRotation::Cw90 => (segment.pixel_scale_y.span() as f32, segment.pixel_scale_x.span() as f32),
         }
     } else {
         (f32::INFINITY, f32::INFINITY)
@@ -217,16 +218,23 @@ fn text_to_section<'a>(
         .add_text(wgpu_text::glyph_brush::Text::new(&text.value).with_scale(text.font_size))
 }
 
-/// Orthographic projection matrix with 90° CCW rotation.
-/// In this coordinate system, (rx, ry) maps to screen position where:
-/// rx controls vertical position (0=bottom, h=top) and ry controls horizontal (0=left, w=right).
-pub fn ortho_rotated_ccw(width: f32, height: f32) -> Matrix {
-    [
-        [0.0, 2.0 / height, 0.0, 0.0],
-        [2.0 / width, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [-1.0, -1.0, 0.0, 1.0],
-    ]
+/// Build an orthographic projection matrix for a given text rotation.
+pub fn text_projection_matrix(rotation: TextRotation, width: f32, height: f32) -> Matrix {
+    match rotation {
+        TextRotation::None => wgpu_text::ortho(width, height),
+        TextRotation::Ccw90 => [
+            [0.0, 2.0 / height, 0.0, 0.0],
+            [2.0 / width, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [-1.0, -1.0, 0.0, 1.0],
+        ],
+        TextRotation::Cw90 => [
+            [0.0, -2.0 / height, 0.0, 0.0],
+            [-2.0 / width, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0, 1.0],
+        ],
+    }
 }
 
 /// View transform uniform — identity matrix enables future pan/zoom support.
@@ -485,8 +493,7 @@ impl Frame {
         config: &wgpu::SurfaceConfiguration,
         window: std::sync::Arc<Window>,
         queue: &wgpu::Queue,
-        brush: &mut TextBrush<FontRef>,
-        brush_rotated: &mut TextBrush<FontRef>,
+        brushes: &mut HashMap<TextRotation, TextBrush<FontRef>>,
         plot_output: &PlotOutput,
         theme: &Theme,
         view_uniform: ViewUniform,
@@ -539,9 +546,9 @@ impl Frame {
         let mut point_instances: Vec<PointInstance> = vec![];
         let mut line_vertices: Vec<LineVertex> = vec![];
         let mut line_indices: Vec<u32> = vec![];
-        let mut text_sections: Vec<TextSection> = vec![];
-        let mut rotated_text_sections: Vec<TextSection> = vec![];
-        let px_per_ndc_x = window_width as f32 / 2.0;
+        let mut text_sections_by_rotation: HashMap<TextRotation, Vec<TextSection>> = HashMap::new();
+        let window_width_f32 = window_width as f32;
+        let px_per_ndc_x = window_width_f32 / 2.0;
         let px_per_ndc_y = window_height / 2.0;
 
         for (key, elements) in &plot_output.regions {
@@ -582,20 +589,20 @@ impl Frame {
                         );
                     }
                     Element::Text(t) => {
-                        if t.rotated {
-                            rotated_text_sections.push(text_to_section(t, segment, window_height));
-                        } else {
-                            text_sections.push(text_to_section(t, segment, window_height));
-                        }
+                        text_sections_by_rotation
+                            .entry(t.rotation)
+                            .or_default()
+                            .push(text_to_section(t, segment, window_width_f32, window_height));
                     }
                 }
             }
         }
 
-        brush.queue(device, queue, text_sections).unwrap();
-        brush_rotated
-            .queue(device, queue, rotated_text_sections)
-            .unwrap();
+        for (rotation, sections) in text_sections_by_rotation {
+            if let Some(brush) = brushes.get_mut(&rotation) {
+                brush.queue(device, queue, sections).unwrap();
+            }
+        }
 
         // General pipeline (rectangles, axes, tick marks)
         let general_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

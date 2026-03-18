@@ -182,6 +182,8 @@ pub enum PlotRegion {
     Legend,
     Caption,
     FacetLabel,
+    FacetColLabel,
+    FacetRowLabel,
     Spacer,
 }
 
@@ -245,6 +247,7 @@ impl LayoutNode {
                     map.insert(*key, segment.clone());
                 }
             }
+
             LayoutNode::Split { axis, children } => {
                 let total_px = match axis {
                     SplitAxis::Vertical => segment.pixel_scale_y.span(),

@@ -40,8 +40,17 @@ attribute_value = { data_reference | string_literal | number }
 geometry_type = { "POINT" | "LINE" }
 
 // Facet Statement
-facet_statement = { "FACET" ~ "BY" ~ data_reference ~ facet_columns? }
-facet_columns = { "COLUMNS" ~ integer }
+facet_statement = { "FACET" ~ (facet_wrap | facet_grid) }
+facet_wrap      = { "WRAP" ~ data_reference ~ facet_columns? ~ facet_scales? }
+facet_grid      = { "GRID" ~ (facet_rows_cols | facet_rows_only | facet_cols_only) ~ facet_scales? }
+facet_rows_cols = { "ROWS" ~ data_reference ~ "COLS" ~ data_reference }
+facet_rows_only = { "ROWS" ~ data_reference }
+facet_cols_only = { "COLS" ~ data_reference }
+facet_columns   = { "COLUMNS" ~ integer }
+facet_scales    = { "SCALES" ~ (free_axis | free_both | fixed_scales) }
+free_axis       = { "FREE" ~ ("X" | "Y") }
+free_both       = { "FREE" }
+fixed_scales    = { "FIXED" }
 
 // Basic Data Types
 string_literal = @{ "\"" ~ string_character* ~ "\"" }

@@ -27,6 +27,14 @@ impl Rectangle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextRotation {
+    #[default]
+    None,
+    Ccw90, // Y-axis labels
+    Cw90,  // Facet row labels
+}
+
 #[derive(Clone, Debug, Default)]
 pub enum HAlign {
     #[default]
@@ -48,7 +56,7 @@ pub struct Text {
     pub position: (Unit, Unit),
     pub h_align: HAlign,
     pub v_align: VAlign,
-    pub rotated: bool,
+    pub rotation: TextRotation,
     pub wrap: bool,
 }
 impl Text {
@@ -59,7 +67,7 @@ impl Text {
             position,
             h_align: HAlign::Left,
             v_align: VAlign::Top,
-            rotated: false,
+            rotation: TextRotation::None,
             wrap: false,
         }
     }
@@ -71,7 +79,7 @@ impl Text {
             position,
             h_align: HAlign::Center,
             v_align: VAlign::Top,
-            rotated: false,
+            rotation: TextRotation::None,
             wrap: false,
         }
     }
@@ -86,8 +94,8 @@ impl Text {
         self
     }
 
-    pub fn with_rotation(mut self) -> Self {
-        self.rotated = true;
+    pub fn with_rotation(mut self, rotation: TextRotation) -> Self {
+        self.rotation = rotation;
         self
     }
 }

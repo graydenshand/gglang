@@ -30,6 +30,7 @@ pub struct Theme {
     pub facet_label_bg_color: [f32; 4],
     pub panel_border_color: [f32; 4],
     pub panel_border_thickness: f32,
+    pub facet_row_label_width: u32,
 }
 
 impl Default for Theme {
@@ -54,11 +55,12 @@ impl Default for Theme {
             axis_color: [0.7, 0.7, 0.7, 1.0],
 
             facet_label_height: 40,
-            facet_gap: 16,
+            facet_gap: 64,
             facet_label_font_size: 32.0,
             facet_label_bg_color: [0.85, 0.85, 0.85, 1.0],
             panel_border_color: [0.7, 0.7, 0.7, 1.0],
             panel_border_thickness: 1.0,
+            facet_row_label_width: 40,
         }
     }
 }

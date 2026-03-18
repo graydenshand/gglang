@@ -32,6 +32,9 @@ pub trait Scale {
 
     /// Return the family this scale belongs to.
     fn aesthetic_family(&self) -> AestheticFamily;
+
+    /// Create a fresh, unfitted copy of this scale (same type/axis, no data).
+    fn clone_unfitted(&self) -> Box<dyn Scale>;
 }
 
 /// Which axis a positional scale operates on.
@@ -187,6 +190,10 @@ impl Scale for ScalePositionContinuous {
         }
         Ok(())
     }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScalePositionContinuous::new(self.axis))
+    }
 }
 
 /// Convert HSL (h in 0..360, s and l in 0..1) to RGB (each in 0..1).
@@ -297,6 +304,10 @@ impl Scale for ScaleColorDiscrete {
 
     fn aesthetic_family(&self) -> AestheticFamily {
         AestheticFamily::Color
+    }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScaleColorDiscrete::new())
     }
 }
 

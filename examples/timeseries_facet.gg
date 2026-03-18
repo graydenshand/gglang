@@ -1,7 +1,7 @@
 MAP x=:day, y=:price
 GEOM LINE
 GEOM POINT
-FACET BY :ticker
+FACET GRID ROWS :ticker SCALES FREE Y
 TITLE "Stock Prices"
 XLABEL "Day"
 YLABEL "Price"

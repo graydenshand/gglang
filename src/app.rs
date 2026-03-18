@@ -16,7 +16,9 @@ use winit::{
     window::Window,
 };
 
-use crate::frame::{ortho_rotated_ccw, ViewUniform};
+use crate::frame::{text_projection_matrix, ViewUniform};
+use crate::shape::TextRotation;
+use std::collections::HashMap;
 use wgpu_text::{BrushBuilder, TextBrush};
 
 #[cfg(target_arch = "wasm32")]
@@ -30,8 +32,7 @@ pub struct AppState<'a> {
     is_surface_configured: bool,
     window: Arc<Window>,
     frame: Option<Frame>,
-    brush: TextBrush<FontRef<'a>>,
-    brush_rotated: TextBrush<FontRef<'a>>,
+    brushes: HashMap<TextRotation, TextBrush<FontRef<'a>>>,
     plot_output: PlotOutput,
     theme: Theme,
     view_uniform: ViewUniform,
@@ -98,19 +99,16 @@ impl AppState<'_> {
         };
 
         let font = include_bytes!("fonts/OpenSans-Regular.ttf");
-        let brush = BrushBuilder::using_font_bytes(font).unwrap().build(
-            &device,
-            config.width,
-            config.height,
-            config.format,
-        );
-        let brush_rotated = BrushBuilder::using_font_bytes(font)
-            .unwrap()
-            .with_matrix(ortho_rotated_ccw(
-                config.width as f32,
-                config.height as f32,
-            ))
-            .build(&device, config.width, config.height, config.format);
+        let w = config.width as f32;
+        let h = config.height as f32;
+        let mut brushes = HashMap::new();
+        for rotation in [TextRotation::None, TextRotation::Ccw90, TextRotation::Cw90] {
+            let brush = BrushBuilder::using_font_bytes(font)
+                .unwrap()
+                .with_matrix(text_projection_matrix(rotation, w, h))
+                .build(&device, config.width, config.height, config.format);
+            brushes.insert(rotation, brush);
+        }
 
         Ok(Self {
             surface,
@@ -120,8 +118,7 @@ impl AppState<'_> {
             is_surface_configured: false,
             window,
             frame: None,
-            brush,
-            brush_rotated,
+            brushes,
             plot_output,
             theme,
             view_uniform: ViewUniform::identity(),
@@ -136,9 +133,9 @@ impl AppState<'_> {
             self.is_surface_configured = true;
             let w = self.config.width as f32;
             let h = self.config.height as f32;
-            self.brush.resize_view(w, h, &self.queue);
-            self.brush_rotated
-                .update_matrix(ortho_rotated_ccw(w, h), &self.queue);
+            for (&rotation, brush) in self.brushes.iter_mut() {
+                brush.update_matrix(text_projection_matrix(rotation, w, h), &self.queue);
+            }
             self.update()
         }
     }
@@ -149,8 +146,7 @@ impl AppState<'_> {
             &self.config,
             self.window.clone(),
             &self.queue,
-            &mut self.brush,
-            &mut self.brush_rotated,
+            &mut self.brushes,
             &self.plot_output,
             &self.theme,
             self.view_uniform,
@@ -203,8 +199,9 @@ impl AppState<'_> {
                 frame.render(&mut render_pass);
             }
 
-            self.brush.draw(&mut render_pass);
-            self.brush_rotated.draw(&mut render_pass);
+            for brush in self.brushes.values_mut() {
+                brush.draw(&mut render_pass);
+            }
         }
 
         self.queue.submit(iter::once(encoder.finish()));
