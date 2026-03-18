@@ -122,6 +122,50 @@ impl WindowSegment {
         }
     }
 
+    /// Map an x position to pixel window coordinates
+    pub fn px_x(&self, x: &Unit) -> f32 {
+        match x {
+            Unit::NDC(v) => NDC_SCALE.map_position(&self.pixel_scale_x, *v as f64) as f32,
+            Unit::Pixels(v) => *v as f32,
+            Unit::Percent(v) => PERCENT_SCALE.map_position(&self.pixel_scale_x, *v as f64) as f32,
+        }
+    }
+
+    /// Map a y position to pixel window coordinates (Y-down: 0=top, max=bottom)
+    pub fn px_y(&self, y: &Unit) -> f32 {
+        match y {
+            // NDC Y-up (+1=top) → pixel Y-down (min=top): invert
+            Unit::NDC(v) => {
+                let frac = (*v as f64 - NDC_SCALE.min) / NDC_SCALE.span();
+                (self.pixel_scale_y.min + (1.0 - frac) * self.pixel_scale_y.span()) as f32
+            }
+            Unit::Pixels(v) => *v as f32,
+            // Percent 0=bottom, 100=top → invert for pixel Y
+            Unit::Percent(v) => {
+                let frac = *v as f64 / 100.0;
+                (self.pixel_scale_y.min + (1.0 - frac) * self.pixel_scale_y.span()) as f32
+            }
+        }
+    }
+
+    /// Map a width unit to pixel window coordinates
+    pub fn px_width(&self, x: &Unit) -> f32 {
+        match x {
+            Unit::NDC(v) => NDC_SCALE.map_size(&self.pixel_scale_x, *v as f64) as f32,
+            Unit::Pixels(v) => *v as f32,
+            Unit::Percent(v) => PERCENT_SCALE.map_size(&self.pixel_scale_x, *v as f64) as f32,
+        }
+    }
+
+    /// Map a height unit to pixel window coordinates
+    pub fn px_height(&self, y: &Unit) -> f32 {
+        match y {
+            Unit::NDC(v) => NDC_SCALE.map_size(&self.pixel_scale_y, *v as f64) as f32,
+            Unit::Pixels(v) => *v as f32,
+            Unit::Percent(v) => PERCENT_SCALE.map_size(&self.pixel_scale_y, *v as f64) as f32,
+        }
+    }
+
     /// Create a new WindowSegment with margin (padding) on each side
     pub fn with_margin(&self, margin: Unit) -> Self {
         let margin_ndc_x = margin.as_ndc(self.pixel_scale_x.span() as u32);

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.100"
+resvg = "0.44"
 bytemuck = { version = "1.24.0", features = ["derive"] }
 env_logger = "0.11.8"
 glyph_brush = "0.7.12"

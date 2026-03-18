@@ -9,18 +9,18 @@
 6. ~~**Shader architecture**~~ — View transform uniform, instanced SDF points, miter-join polylines, three render pipelines.
 7. ~~**Render backend abstraction (phase 1)**~~ — `shape.rs` and `layout.rs` fully backend-agnostic; GPU types confined to `frame.rs`.
 8. ~~**PlotData typing**~~ — `RawColumn`/`MappedColumn`/`AesData`/`ResolvedData` split; compile-time pipeline guarantees.
+9. ~~**Split plot module**~~ — Break `plot.rs` into `geom.rs`, `scale.rs`, `aesthetic.rs` for navigability.
+10. ~~**Geom attribute syntax**~~ — Grammar + compiler support for `GEOM TYPE { key=value, ... }` blocks.
+11. ~~**Hardcoded aesthetics**~~ — Set constant aesthetic values on a layer, e.g. `GEOM POINT { color="#0000FF" }`.
+12. ~~**Per-layer mappings**~~ — Override plot-level defaults on individual layers, e.g. `GEOM LINE { color=:region }`.
+13. ~~**Faceting**~~ — `FACET WRAP :var` and `FACET GRID ROWS :r COLS :c` with scale freedom controls.
+14. ~~**SVG/PNG export**~~ — `src/svg.rs` + `src/png.rs` via `resvg`. `--output <path>` flag on the `plot` binary. Pixel-coordinate methods (`px_x/y/width/height`) on `WindowSegment`.
 
 ## Current sprint
 
-1. ~~**Split plot module**~~ (`issues/issue-split-plot-module.md`) — Break `plot.rs` into `geom.rs`, `scale.rs`, `aesthetic.rs` for navigability before adding new types.
+1. **Error handling** (`issues/issue-error-handling.md`) — Replace `.unwrap()`/`.expect()` panics with `Result` propagation and structured errors. Covers parser, compiler, data loading, and render paths.
 
-2. ~~**Geom attribute syntax**~~ (`issues/issue-geom-attribute-syntax.md`) — Grammar + compiler support for `GEOM TYPE { key=value, ... }` blocks. Shared infra for hardcoded aesthetics and per-layer mappings.
-
-3. ~~**Hardcoded aesthetics**~~ (`stories/hardcoded_aesthetics.md`) — Set constant aesthetic values on a layer, e.g. `GEOM POINT { color="#0000FF" }`.
-
-4. ~~**Per-layer mappings**~~ (`stories/per_layer_mappings.md`) — Override plot-level defaults on individual layers, e.g. `GEOM LINE { color=:region }`.
-
-5. ~~**Faceting**~~ (`stories/faceting.md`) — `FACET BY :var` splits data into a grid of sub-plots. `RegionKey` compound key, per-panel rendering with shared scales, `faceted_plot_layout()`, `FACET BY :var COLUMNS n` syntax.
+3. **ScalePositionDiscrete** (`issues/issue-scale-position-discrete.md`) — Categorical position scale for bar charts, dot plots, and any categorical-axis visualization. Unblocks `GeomBar`.
 
 ## Backlog — Features
 
@@ -35,12 +35,7 @@
 ## Backlog — Infrastructure
 
 - **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references, stackable so a base company theme can be extended per-plot.
-
-
-- **Error handling** (`issues/issue-error-handling.md`) — Replace `.unwrap()`/`.expect()` panics with `Result` propagation and structured errors.
-- **ScalePositionDiscrete** (`issues/issue-scale-position-discrete.md`) — Categorical position scale for bar charts and dot plots.
 - **Log scale** (`issues/issue-scale-log.md`) — `ScaleLogContinuous` + `SCALE` statement grammar support.
-- **SVG/PNG export** (`issues/issue-svg-export.md`) — Phase 2 render backend: produce SVG/PNG without a GPU.
 
 ## Backlog — Integrations
 
