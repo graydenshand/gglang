@@ -6,6 +6,7 @@ program = { SOI ~ statement* ~ EOI }
 statement = {
     map_statement |
     geom_statement |
+    facet_statement |
     title_statement |
     xlabel_statement |
     ylabel_statement |
@@ -32,8 +33,15 @@ aesthetic = { "x" | "y" | "color" | "group" }
 data_reference = { ":" ~ identifier }
 
 // Geometry Statement
-geom_statement = { "GEOM" ~ geometry_type }
+geom_statement = { "GEOM" ~ geometry_type ~ geom_attributes? }
+geom_attributes = { "{" ~ geom_attribute ~ ("," ~ geom_attribute)* ~ "}" }
+geom_attribute = { aesthetic ~ "=" ~ attribute_value }
+attribute_value = { data_reference | string_literal | number }
 geometry_type = { "POINT" | "LINE" }
+
+// Facet Statement
+facet_statement = { "FACET" ~ "BY" ~ data_reference ~ facet_columns? }
+facet_columns = { "COLUMNS" ~ integer }
 
 // Basic Data Types
 string_literal = @{ "\"" ~ string_character* ~ "\"" }

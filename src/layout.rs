@@ -181,7 +181,28 @@ pub enum PlotRegion {
     Title,
     Legend,
     Caption,
+    FacetLabel,
     Spacer,
+}
+
+/// Compound key for layout regions — supports both shared (non-faceted)
+/// and per-panel (faceted) regions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RegionKey {
+    pub region: PlotRegion,
+    pub panel: Option<usize>,
+}
+
+impl RegionKey {
+    /// A shared region (non-faceted or global).
+    pub fn shared(region: PlotRegion) -> Self {
+        Self { region, panel: None }
+    }
+
+    /// A per-panel region for faceted plots.
+    pub fn panel(region: PlotRegion, index: usize) -> Self {
+        Self { region, panel: Some(index) }
+    }
 }
 
 /// Size specification for a layout child
@@ -201,7 +222,7 @@ pub enum SplitAxis {
 
 /// A node in the layout tree
 pub enum LayoutNode {
-    Leaf(PlotRegion),
+    Leaf(RegionKey),
     Split {
         axis: SplitAxis,
         children: Vec<(SizeSpec, LayoutNode)>,
@@ -210,18 +231,18 @@ pub enum LayoutNode {
 
 impl LayoutNode {
     /// Resolve this layout tree against a window segment, returning a map from
-    /// PlotRegion to the WindowSegment it occupies.
-    pub fn resolve(&self, segment: &WindowSegment) -> HashMap<PlotRegion, WindowSegment> {
+    /// RegionKey to the WindowSegment it occupies.
+    pub fn resolve(&self, segment: &WindowSegment) -> HashMap<RegionKey, WindowSegment> {
         let mut map = HashMap::new();
         self.resolve_into(segment, &mut map);
         map
     }
 
-    fn resolve_into(&self, segment: &WindowSegment, map: &mut HashMap<PlotRegion, WindowSegment>) {
+    fn resolve_into(&self, segment: &WindowSegment, map: &mut HashMap<RegionKey, WindowSegment>) {
         match self {
-            LayoutNode::Leaf(region) => {
-                if *region != PlotRegion::Spacer {
-                    map.insert(*region, segment.clone());
+            LayoutNode::Leaf(key) => {
+                if key.region != PlotRegion::Spacer {
+                    map.insert(*key, segment.clone());
                 }
             }
             LayoutNode::Split { axis, children } => {
@@ -273,7 +294,7 @@ impl LayoutNode {
 /// Output of Blueprint::render — elements partitioned into named regions,
 /// plus the layout tree describing how to position those regions.
 pub struct PlotOutput {
-    pub regions: HashMap<PlotRegion, Vec<Element>>,
+    pub regions: HashMap<RegionKey, Vec<Element>>,
     pub layout: LayoutNode,
 }
 

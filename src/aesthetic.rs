@@ -51,3 +51,22 @@ pub struct Mapping {
     pub aesthetic: Aesthetic,
     pub variable: String,
 }
+
+/// A constant (hardcoded) visual value for an aesthetic channel.
+#[derive(Clone, Debug)]
+pub enum ConstantValue {
+    Color([f32; 3]),
+    Float(f64),
+}
+
+/// Parse a `#RRGGBB` hex string into a linear `[f32; 3]` RGB triple.
+pub fn parse_hex_color(s: &str) -> Result<[f32; 3], String> {
+    let s = s.trim_start_matches('#');
+    if s.len() != 6 {
+        return Err(format!("Expected 6-digit hex color, got: #{}", s));
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).map_err(|e| e.to_string())?;
+    let g = u8::from_str_radix(&s[2..4], 16).map_err(|e| e.to_string())?;
+    let b = u8::from_str_radix(&s[4..6], 16).map_err(|e| e.to_string())?;
+    Ok([r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0])
+}

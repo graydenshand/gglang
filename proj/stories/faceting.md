@@ -43,4 +43,4 @@ FACET BY :region, :product
 
 # Status
 
-Not started.
+Done. Single-variable faceting implemented with `FACET BY :var` and optional `COLUMNS n`. Shared scales across panels, facet strip labels, `RegionKey` compound key. Multi-variable faceting (`FACET BY :a, :b`) deferred to a future story.

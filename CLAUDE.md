@@ -22,7 +22,7 @@ Goals:
 
 ## Current state
 
-The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu. Supported features: `GeomPoint` and `GeomLine` with X/Y continuous scales, `group` aesthetic for partitioning line series, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels. CSV loading auto-detects numeric vs. string columns. A tree-based layout system gives each plot region (data area, axis gutters, title, legend, caption) its own `WindowSegment`, replacing the previous out-of-bounds NDC positioning. The rendering backend uses three separate pipelines: a general pipeline for rectangles/axes/ticks, an instanced SDF pipeline for anti-aliased points, and a miter-join tessellated pipeline for polylines. A view transform uniform (currently identity) unblocks future pan/zoom. The domain modules (`shape.rs`, `layout.rs`, `plot.rs`) are fully backend-agnostic — all wgpu/winit types are confined to `frame.rs` and `app.rs`, enabling GPU-free testing and future SVG/PNG export.
+The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu. Supported features: `GeomPoint` and `GeomLine` with X/Y continuous scales, `group` aesthetic for partitioning line series, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels, and faceting via `FACET BY :var` (splits data into a grid of sub-plots by categorical variable, with shared scales across panels). CSV loading auto-detects numeric vs. string columns. A tree-based layout system gives each plot region (data area, axis gutters, title, legend, caption, facet labels) its own `WindowSegment`, replacing the previous out-of-bounds NDC positioning. `RegionKey` (compound `PlotRegion` + optional panel index) enables both single-plot and faceted layouts through the same rendering pipeline. The rendering backend uses three separate pipelines: a general pipeline for rectangles/axes/ticks, an instanced SDF pipeline for anti-aliased points, and a miter-join tessellated pipeline for polylines. A view transform uniform (currently identity) unblocks future pan/zoom. The domain modules (`shape.rs`, `layout.rs`, `plot.rs`) are fully backend-agnostic — all wgpu/winit types are confined to `frame.rs` and `app.rs`, enabling GPU-free testing and future SVG/PNG export.
 
 ## Module map
 
@@ -49,8 +49,8 @@ The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CS
 
 ```
 Raw data → Scale::map() → Unit::NDC        (data domain → NDC -1..1)
-Blueprint::render()      → PlotOutput       (elements partitioned by PlotRegion + LayoutNode tree)
-Frame::new()             → LayoutNode::resolve()  (layout tree + root segment → HashMap<PlotRegion, WindowSegment>)
+Blueprint::render()      → PlotOutput       (elements partitioned by RegionKey + LayoutNode tree)
+Frame::new()             → LayoutNode::resolve()  (layout tree + root segment → HashMap<RegionKey, WindowSegment>)
                          → WindowSegment::abs_x/y()  (region-local NDC → absolute clip space)
                          → tessellate_polyline()     (miter joins in pixel space → NDC triangle mesh)
                          → ViewUniform * position    (view transform applied in vertex shader)
@@ -60,9 +60,10 @@ Frame::new()             → LayoutNode::resolve()  (layout tree + root segment 
 
 - `Unit` enum: `Pixels(u32)`, `NDC(f32)`, `Percent(f32)` — polymorphic coordinate value
 - `WindowSegment`: a rectangular sub-region of the window, holds NDC and pixel scales for both axes. `with_margin()` creates a sub-segment. `slice_x()`/`slice_y()` subdivide along an axis.
-- `LayoutNode`: tree of `Leaf(PlotRegion)` and `Split { axis, children: Vec<(SizeSpec, LayoutNode)> }`. Resolved against a root `WindowSegment` to produce per-region segments.
-- `PlotRegion`: `DataArea`, `XAxisGutter`, `YAxisGutter`, `Title`, `Legend`, `Caption`, `Spacer`
-- `PlotOutput`: `{ regions: HashMap<PlotRegion, Vec<Element>>, layout: LayoutNode }` — returned by `Blueprint::render()`, consumed by `Frame::new()`
+- `LayoutNode`: tree of `Leaf(RegionKey)` and `Split { axis, children: Vec<(SizeSpec, LayoutNode)> }`. Resolved against a root `WindowSegment` to produce per-region segments.
+- `PlotRegion`: `DataArea`, `XAxisGutter`, `YAxisGutter`, `Title`, `Legend`, `Caption`, `FacetLabel`, `Spacer`
+- `RegionKey`: `{ region: PlotRegion, panel: Option<usize> }` — compound key supporting both shared regions (`panel: None`) and per-panel faceted regions (`panel: Some(i)`)
+- `PlotOutput`: `{ regions: HashMap<RegionKey, Vec<Element>>, layout: LayoutNode }` — returned by `Blueprint::render()`, consumed by `Frame::new()`
 - All vertex positions are in NDC (clip space) by the time they reach the shader.
 
 ### Key abstraction boundary
@@ -81,11 +82,12 @@ MAP x=:day, y=:price, group=:ticker, color=:ticker
 GEOM LINE                          // timeseries line plot
 
 SCALE X_CONTINUOUS
-FACET BY :store
+FACET BY :store                    // split into sub-plots by category
+FACET BY :region COLUMNS 3         // force 3-column grid
 TITLE "My plot"
 ```
 
-Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer.
+Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. `FACET BY` splits data into panels sharing scales.
 
 ## Key architectural decisions
 

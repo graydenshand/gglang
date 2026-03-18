@@ -544,8 +544,8 @@ impl Frame {
         let px_per_ndc_x = window_width as f32 / 2.0;
         let px_per_ndc_y = window_height / 2.0;
 
-        for (region, elements) in &plot_output.regions {
-            let segment = match segments.get(region) {
+        for (key, elements) in &plot_output.regions {
+            let segment = match segments.get(key) {
                 Some(s) => s,
                 None => continue,
             };

@@ -32,6 +32,39 @@ impl RawColumn {
             Self::StringArray(_) => Err("Cannot convert StringArray to f64".into()),
         }
     }
+
+    /// Select elements at the given indices, preserving order.
+    pub fn select_indices(&self, indices: &[usize]) -> Self {
+        match self {
+            Self::FloatArray(v) => Self::FloatArray(indices.iter().map(|&i| v[i]).collect()),
+            Self::IntArray(v) => Self::IntArray(indices.iter().map(|&i| v[i]).collect()),
+            Self::StringArray(v) => Self::StringArray(indices.iter().map(|&i| v[i].clone()).collect()),
+        }
+    }
+
+    /// Return distinct string values in appearance order. Panics if not a StringArray.
+    pub fn distinct_strings(&self) -> Vec<String> {
+        match self {
+            Self::StringArray(v) => {
+                let mut seen = Vec::new();
+                for s in v {
+                    if !seen.contains(s) {
+                        seen.push(s.clone());
+                    }
+                }
+                seen
+            }
+            _ => panic!("distinct_strings called on non-StringArray"),
+        }
+    }
+
+    /// Return indices where this column's string value equals `value`. Panics if not a StringArray.
+    pub fn indices_where_eq(&self, value: &str) -> Vec<usize> {
+        match self {
+            Self::StringArray(v) => v.iter().enumerate().filter(|(_, s)| s.as_str() == value).map(|(i, _)| i).collect(),
+            _ => panic!("indices_where_eq called on non-StringArray"),
+        }
+    }
 }
 
 /// Output of scale mapping — ready for geometry rendering.
@@ -107,5 +140,14 @@ impl PlotData {
 
     pub fn get(&self, key: &str) -> Option<&RawColumn> {
         self.data.get(key)
+    }
+
+    /// Create a new PlotData with only the rows at the given indices.
+    pub fn subset(&self, indices: &[usize]) -> Self {
+        let mut result = Self::new();
+        for (key, col) in &self.data {
+            result.insert(key.clone(), col.select_indices(indices));
+        }
+        result
     }
 }

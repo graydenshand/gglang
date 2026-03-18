@@ -40,6 +40,11 @@ Bar chart, faceted
 ```gg
 GEOM BAR ( x=:year, y=:sales )
 FACET BY :store
+FACET WRAP :store
+
+FACET GRID ROWS :store
+FACET GRID COLS :store
+FACET GRID ROWS :store COLS :town
 ```
 
 Networks & Trees - how to declare links and layouts?

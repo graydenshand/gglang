@@ -19,6 +19,17 @@ pub struct Theme {
     pub legend_width: u32,
     pub legend_margin: u32,
     pub gutter_spacer_height: u32,
+
+    // Axes
+    pub axis_color: [f32; 4],
+
+    // Faceting
+    pub facet_label_height: u32,
+    pub facet_gap: u32,
+    pub facet_label_font_size: f32,
+    pub facet_label_bg_color: [f32; 4],
+    pub panel_border_color: [f32; 4],
+    pub panel_border_thickness: f32,
 }
 
 impl Default for Theme {
@@ -39,6 +50,15 @@ impl Default for Theme {
             legend_width: 200,
             legend_margin: 16,
             gutter_spacer_height: 60,
+
+            axis_color: [0.7, 0.7, 0.7, 1.0],
+
+            facet_label_height: 40,
+            facet_gap: 16,
+            facet_label_font_size: 32.0,
+            facet_label_bg_color: [0.85, 0.85, 0.85, 1.0],
+            panel_border_color: [0.7, 0.7, 0.7, 1.0],
+            panel_border_thickness: 1.0,
         }
     }
 }

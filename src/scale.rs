@@ -63,7 +63,7 @@ impl ScalePositionContinuous {
             [Unit::NDC(0.0), Unit::NDC(1.0)],
             Unit::NDC(2.0),
             Unit::Pixels(1),
-            [0.0, 0.0, 0.0, 1.0],
+            theme.axis_color,
         );
         elements.push(Element::Rect(xaxis));
 
@@ -76,7 +76,7 @@ impl ScalePositionContinuous {
                 [Unit::NDC(x_ndc), Unit::NDC(1.0)],
                 Unit::Pixels(1),
                 Unit::Pixels(6),
-                [0.0, 0.0, 0.0, 1.0],
+                theme.axis_color,
             );
             elements.push(Element::Rect(tick));
 
@@ -104,7 +104,7 @@ impl ScalePositionContinuous {
             [Unit::NDC(1.0), Unit::NDC(0.0)],
             Unit::Pixels(1),
             Unit::NDC(2.0),
-            [0.0, 0.0, 0.0, 1.0],
+            theme.axis_color,
         );
         elements.push(Element::Rect(yaxis));
 
@@ -117,7 +117,7 @@ impl ScalePositionContinuous {
                 [Unit::NDC(1.0), Unit::NDC(y_ndc)],
                 Unit::Pixels(6),
                 Unit::Pixels(1),
-                [0.0, 0.0, 0.0, 1.0],
+                theme.axis_color,
             );
             elements.push(Element::Rect(tick));
 

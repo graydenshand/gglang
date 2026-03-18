@@ -14,13 +14,13 @@
 
 1. ~~**Split plot module**~~ (`issues/issue-split-plot-module.md`) — Break `plot.rs` into `geom.rs`, `scale.rs`, `aesthetic.rs` for navigability before adding new types.
 
-2. **Geom attribute syntax** (`issues/issue-geom-attribute-syntax.md`) — Grammar + compiler support for `GEOM TYPE { key=value, ... }` blocks. Shared infra for hardcoded aesthetics and per-layer mappings.
+2. ~~**Geom attribute syntax**~~ (`issues/issue-geom-attribute-syntax.md`) — Grammar + compiler support for `GEOM TYPE { key=value, ... }` blocks. Shared infra for hardcoded aesthetics and per-layer mappings.
 
-3. **Hardcoded aesthetics** (`stories/hardcoded_aesthetics.md`) — Set constant aesthetic values on a layer, e.g. `GEOM POINT { color="#0000FF" }`.
+3. ~~**Hardcoded aesthetics**~~ (`stories/hardcoded_aesthetics.md`) — Set constant aesthetic values on a layer, e.g. `GEOM POINT { color="#0000FF" }`.
 
-4. **Per-layer mappings** (`stories/per_layer_mappings.md`) — Override plot-level defaults on individual layers, e.g. `GEOM LINE { color=:region }`.
+4. ~~**Per-layer mappings**~~ (`stories/per_layer_mappings.md`) — Override plot-level defaults on individual layers, e.g. `GEOM LINE { color=:region }`.
 
-5. **Faceting** (`stories/faceting.md`) — `FACET BY :var` splits data into a grid of sub-plots. Exercises the layout tree with real multi-panel rendering.
+5. ~~**Faceting**~~ (`stories/faceting.md`) — `FACET BY :var` splits data into a grid of sub-plots. `RegionKey` compound key, per-panel rendering with shared scales, `faceted_plot_layout()`, `FACET BY :var COLUMNS n` syntax.
 
 ## Backlog — Features
 
