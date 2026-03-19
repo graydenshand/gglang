@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::aesthetic::{Aesthetic, AestheticFamily};
 use crate::column::{AesData, MappedColumn, RawColumn, ResolvedData};
+use crate::error::GglangError;
 use crate::layout::Unit;
 use crate::scale::{IdentityTransform, Scale, StatTransform};
 use crate::shape::{Element, PointData, PolylineData};
@@ -36,7 +37,7 @@ pub trait Geometry {
     }
 
     /// Renders shapes to be drawn on the screen using fully resolved (scale-mapped) data.
-    fn render(&self, data: &ResolvedData) -> Vec<Element>;
+    fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError>;
 
     /// The list of aesthetic families that may be used in this layer
     fn aesthetic_families(&self) -> Vec<AestheticFamily> {
@@ -48,7 +49,11 @@ pub trait Geometry {
     }
 
     /// Update scales using the aesthetic-keyed raw data for this layer.
-    fn update_scales(&self, scales: &mut Vec<Box<dyn Scale>>, data: &AesData) {
+    fn update_scales(
+        &self,
+        scales: &mut Vec<Box<dyn Scale>>,
+        data: &AesData,
+    ) -> Result<(), GglangError> {
         let families: Vec<AestheticFamily> = self.aesthetic_families();
 
         let mut family_scale_map: HashMap<AestheticFamily, &mut Box<dyn Scale>> = scales
@@ -70,10 +75,11 @@ pub trait Geometry {
         {
             if let Some(col) = data.get(*aes) {
                 if let Some(scale) = family_scale_map.get_mut(&aes.family()) {
-                    scale.append(col).expect("scale append failed");
+                    scale.append(col)?;
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -94,19 +100,36 @@ impl Geometry for GeomPoint {
         vec![Aesthetic::Color]
     }
 
-    fn render(&self, data: &ResolvedData) -> Vec<Element> {
-        let x_mapped = match data.mapped.get(&Aesthetic::X).expect("X was validated") {
+    fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
+        let x_mapped = match data.mapped.get(&Aesthetic::X).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic X".to_string(),
+        })? {
             MappedColumn::UnitArray(v) => v,
-            _ => panic!("expected UnitArray from position scale"),
+            _ => {
+                return Err(GglangError::Render {
+                    message: "Expected UnitArray from X position scale".to_string(),
+                })
+            }
         };
-        let y_mapped = match data.mapped.get(&Aesthetic::Y).expect("Y was validated") {
+        let y_mapped = match data.mapped.get(&Aesthetic::Y).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic Y".to_string(),
+        })? {
             MappedColumn::UnitArray(v) => v,
-            _ => panic!("expected UnitArray from position scale"),
+            _ => {
+                return Err(GglangError::Render {
+                    message: "Expected UnitArray from Y position scale".to_string(),
+                })
+            }
         };
-        let colors: Option<&Vec<[f32; 3]>> = data.mapped.get(&Aesthetic::Color).map(|c| match c {
-            MappedColumn::ColorArray(v) => v,
-            _ => panic!("expected ColorArray from color scale"),
-        });
+        let colors: Option<&Vec<[f32; 3]>> = match data.mapped.get(&Aesthetic::Color) {
+            Some(MappedColumn::ColorArray(v)) => Some(v),
+            Some(_) => {
+                return Err(GglangError::Render {
+                    message: "Expected ColorArray from color scale".to_string(),
+                })
+            }
+            None => None,
+        };
 
         let n = x_mapped.len();
         let mut points = Vec::with_capacity(n);
@@ -121,7 +144,7 @@ impl Geometry for GeomPoint {
                 color,
             }));
         }
-        points
+        Ok(points)
     }
 }
 
@@ -143,19 +166,36 @@ impl Geometry for GeomLine {
         vec![Aesthetic::Group, Aesthetic::Color]
     }
 
-    fn render(&self, data: &ResolvedData) -> Vec<Element> {
-        let x_mapped = match data.mapped.get(&Aesthetic::X).expect("X was validated") {
+    fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
+        let x_mapped = match data.mapped.get(&Aesthetic::X).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic X".to_string(),
+        })? {
             MappedColumn::UnitArray(v) => v,
-            _ => panic!("expected UnitArray from position scale"),
+            _ => {
+                return Err(GglangError::Render {
+                    message: "Expected UnitArray from X position scale".to_string(),
+                })
+            }
         };
-        let y_mapped = match data.mapped.get(&Aesthetic::Y).expect("Y was validated") {
+        let y_mapped = match data.mapped.get(&Aesthetic::Y).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic Y".to_string(),
+        })? {
             MappedColumn::UnitArray(v) => v,
-            _ => panic!("expected UnitArray from position scale"),
+            _ => {
+                return Err(GglangError::Render {
+                    message: "Expected UnitArray from Y position scale".to_string(),
+                })
+            }
         };
-        let colors: Option<&Vec<[f32; 3]>> = data.mapped.get(&Aesthetic::Color).map(|c| match c {
-            MappedColumn::ColorArray(v) => v,
-            _ => panic!("expected ColorArray from color scale"),
-        });
+        let colors: Option<&Vec<[f32; 3]>> = match data.mapped.get(&Aesthetic::Color) {
+            Some(MappedColumn::ColorArray(v)) => Some(v),
+            Some(_) => {
+                return Err(GglangError::Render {
+                    message: "Expected ColorArray from color scale".to_string(),
+                })
+            }
+            None => None,
+        };
 
         // Partition row indices by group value (or all rows = one group)
         let groups: Vec<Vec<usize>> =
@@ -197,7 +237,7 @@ impl Geometry for GeomLine {
                 colors: point_colors,
             }));
         }
-        elements
+        Ok(elements)
     }
 }
 

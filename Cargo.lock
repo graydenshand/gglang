@@ -773,6 +773,7 @@ dependencies = [
  "pest_derive",
  "pollster",
  "resvg",
+ "thiserror 1.0.69",
  "wgpu",
  "wgpu_text",
  "winit",

@@ -1,6 +1,8 @@
 use pest::Parser;
 use pest_derive::Parser;
 
+use crate::error::GglangError;
+
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 struct GGCParser;
@@ -75,17 +77,22 @@ pub enum GeometryType {
     Line,
 }
 
-fn parse_data_reference(pair: pest::iterators::Pair<Rule>) -> String {
-    pair.into_inner()
+fn parse_data_reference(pair: pest::iterators::Pair<Rule>) -> Result<String, GglangError> {
+    Ok(pair
+        .into_inner()
         .next()
-        .unwrap()
+        .ok_or_else(|| GglangError::Parse {
+            message: "Expected identifier token in data_reference".to_string(),
+        })?
         .as_str()
-        .to_string()
+        .to_string())
 }
 
-fn parse_facet_scales(pair: pest::iterators::Pair<Rule>) -> ScaleFreedom {
-    let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
+fn parse_facet_scales(pair: pest::iterators::Pair<Rule>) -> Result<ScaleFreedom, GglangError> {
+    let inner = pair.into_inner().next().ok_or_else(|| GglangError::Parse {
+        message: "Expected scale freedom token in facet_scales".to_string(),
+    })?;
+    Ok(match inner.as_rule() {
         Rule::free_axis => {
             let axis = inner.as_str().trim();
             if axis.ends_with('X') {
@@ -97,20 +104,29 @@ fn parse_facet_scales(pair: pest::iterators::Pair<Rule>) -> ScaleFreedom {
         Rule::free_both => ScaleFreedom::Free,
         Rule::fixed_scales => ScaleFreedom::Fixed,
         _ => unreachable!(),
-    }
+    })
 }
 
-pub fn parse(source: &str) -> Result<Program, String> {
-    let pairs = GGCParser::parse(Rule::program, source).map_err(|e| e.to_string())?;
+pub fn parse(source: &str) -> Result<Program, GglangError> {
+    let pairs = GGCParser::parse(Rule::program, source).map_err(|e| GglangError::Parse {
+        message: e.to_string(),
+    })?;
 
-    let pair = pairs.into_iter().next().ok_or("Empty program")?;
+    let pair = pairs.into_iter().next().ok_or_else(|| GglangError::Parse {
+        message: "Empty program".to_string(),
+    })?;
 
     let mut statements = vec![];
 
     for inner_pair in pair.into_inner() {
         match inner_pair.as_rule() {
             Rule::statement => {
-                let stmt_inner = inner_pair.into_inner().next().unwrap();
+                let stmt_inner = inner_pair
+                    .into_inner()
+                    .next()
+                    .ok_or_else(|| GglangError::Parse {
+                        message: "Expected statement body".to_string(),
+                    })?;
                 match stmt_inner.as_rule() {
                     Rule::map_statement => {
                         let mut mappings = vec![];
@@ -119,12 +135,27 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                 for mapping_pair in pair.into_inner() {
                                     if mapping_pair.as_rule() == Rule::data_mapping {
                                         let mut inner = mapping_pair.into_inner();
-                                        let aes_str = inner.next().unwrap().as_str();
-                                        let data_ref = inner.next().unwrap();
+                                        let aes_str = inner
+                                            .next()
+                                            .ok_or_else(|| GglangError::Parse {
+                                                message: "Expected aesthetic name in data_mapping"
+                                                    .to_string(),
+                                            })?
+                                            .as_str();
+                                        let data_ref =
+                                            inner.next().ok_or_else(|| GglangError::Parse {
+                                                message:
+                                                    "Expected data reference in data_mapping"
+                                                        .to_string(),
+                                            })?;
                                         let column = data_ref
                                             .into_inner()
                                             .next()
-                                            .unwrap()
+                                            .ok_or_else(|| GglangError::Parse {
+                                                message:
+                                                    "Expected identifier in data_reference"
+                                                        .to_string(),
+                                            })?
                                             .as_str()
                                             .to_string();
                                         let aesthetic = match aes_str {
@@ -133,10 +164,12 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                             "color" => AstAesthetic::Color,
                                             "group" => AstAesthetic::Group,
                                             other => {
-                                                return Err(format!(
-                                                    "Unsupported aesthetic: {}",
-                                                    other
-                                                ))
+                                                return Err(GglangError::Parse {
+                                                    message: format!(
+                                                        "Unsupported aesthetic: {}",
+                                                        other
+                                                    ),
+                                                })
                                             }
                                         };
                                         mappings.push(DataMapping { column, aesthetic });
@@ -148,11 +181,18 @@ pub fn parse(source: &str) -> Result<Program, String> {
                     }
                     Rule::geom_statement => {
                         let mut inner = stmt_inner.into_inner();
-                        let geom_type_pair = inner.next().unwrap();
+                        let geom_type_pair =
+                            inner.next().ok_or_else(|| GglangError::Parse {
+                                message: "Expected geometry type in geom_statement".to_string(),
+                            })?;
                         let geom_type = match geom_type_pair.as_str() {
                             "POINT" => GeometryType::Point,
                             "LINE" => GeometryType::Line,
-                            other => return Err(format!("Unsupported geometry: {}", other)),
+                            other => {
+                                return Err(GglangError::Parse {
+                                    message: format!("Unsupported geometry: {}", other),
+                                })
+                            }
                         };
                         let mut attrs = vec![];
                         for pair in inner {
@@ -160,22 +200,47 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                 for attr_pair in pair.into_inner() {
                                     if attr_pair.as_rule() == Rule::geom_attribute {
                                         let mut attr_inner = attr_pair.into_inner();
-                                        let aes_str = attr_inner.next().unwrap().as_str();
+                                        let aes_str = attr_inner
+                                            .next()
+                                            .ok_or_else(|| GglangError::Parse {
+                                                message: "Expected aesthetic name in geom_attribute"
+                                                    .to_string(),
+                                            })?
+                                            .as_str();
                                         let aes = match aes_str {
                                             "x" => AstAesthetic::X,
                                             "y" => AstAesthetic::Y,
                                             "color" => AstAesthetic::Color,
                                             "group" => AstAesthetic::Group,
-                                            other => return Err(format!("Unsupported aesthetic: {}", other)),
+                                            other => {
+                                                return Err(GglangError::Parse {
+                                                    message: format!(
+                                                        "Unsupported aesthetic: {}",
+                                                        other
+                                                    ),
+                                                })
+                                            }
                                         };
-                                        let val_pair = attr_inner.next().unwrap();
-                                        let val_inner = val_pair.into_inner().next().unwrap();
+                                        let val_pair =
+                                            attr_inner.next().ok_or_else(|| GglangError::Parse {
+                                                message: "Expected value in geom_attribute"
+                                                    .to_string(),
+                                            })?;
+                                        let val_inner =
+                                            val_pair.into_inner().next().ok_or_else(|| {
+                                                GglangError::Parse {
+                                                    message: "Expected value type token"
+                                                        .to_string(),
+                                                }
+                                            })?;
                                         let attr = match val_inner.as_rule() {
                                             Rule::data_reference => {
                                                 let col = val_inner
                                                     .into_inner()
                                                     .next()
-                                                    .unwrap()
+                                                    .ok_or_else(|| GglangError::Parse {
+                                                        message: "Expected identifier in data_reference".to_string(),
+                                                    })?
                                                     .as_str()
                                                     .to_string();
                                                 GeomAttribute::Mapped(aes, col)
@@ -184,12 +249,25 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                                 let s = val_inner.as_str();
                                                 GeomAttribute::Constant(
                                                     aes,
-                                                    LiteralValue::Str(s[1..s.len() - 1].to_string()),
+                                                    LiteralValue::Str(
+                                                        s[1..s.len() - 1].to_string(),
+                                                    ),
                                                 )
                                             }
                                             Rule::number => {
-                                                let n: f64 = val_inner.as_str().parse().unwrap();
-                                                GeomAttribute::Constant(aes, LiteralValue::Number(n))
+                                                let n: f64 =
+                                                    val_inner.as_str().parse().map_err(|_| {
+                                                        GglangError::Parse {
+                                                            message: format!(
+                                                                "Invalid number: {}",
+                                                                val_inner.as_str()
+                                                            ),
+                                                        }
+                                                    })?;
+                                                GeomAttribute::Constant(
+                                                    aes,
+                                                    LiteralValue::Number(n),
+                                                )
                                             }
                                             _ => unreachable!(),
                                         };
@@ -201,45 +279,85 @@ pub fn parse(source: &str) -> Result<Program, String> {
                         statements.push(Statement::Geom(geom_type, attrs));
                     }
                     Rule::facet_statement => {
-                        let facet_inner = stmt_inner.into_inner().next().unwrap();
+                        let facet_inner =
+                            stmt_inner.into_inner().next().ok_or_else(|| GglangError::Parse {
+                                message: "Expected facet type in facet_statement".to_string(),
+                            })?;
                         let spec = match facet_inner.as_rule() {
                             Rule::facet_wrap => {
                                 let mut inner = facet_inner.into_inner();
-                                let variable = parse_data_reference(inner.next().unwrap());
+                                let variable = parse_data_reference(inner.next().ok_or_else(
+                                    || GglangError::Parse {
+                                        message: "Expected variable in facet_wrap".to_string(),
+                                    },
+                                )?)?;
                                 let mut columns = None;
                                 let mut scales = ScaleFreedom::Fixed;
                                 for pair in inner {
                                     match pair.as_rule() {
                                         Rule::facet_columns => {
-                                            let n: u32 = pair.into_inner().next().unwrap().as_str().parse().unwrap();
+                                            let n: u32 = pair
+                                                .into_inner()
+                                                .next()
+                                                .ok_or_else(|| GglangError::Parse {
+                                                    message: "Expected column count in facet_columns".to_string(),
+                                                })?
+                                                .as_str()
+                                                .parse()
+                                                .map_err(|_| GglangError::Parse {
+                                                    message: "Invalid column count in FACET WRAP COLUMNS".to_string(),
+                                                })?;
                                             columns = Some(n);
                                         }
                                         Rule::facet_scales => {
-                                            scales = parse_facet_scales(pair);
+                                            scales = parse_facet_scales(pair)?;
                                         }
                                         _ => {}
                                     }
                                 }
-                                FacetSpec::Wrap { variable, columns, scales }
+                                FacetSpec::Wrap {
+                                    variable,
+                                    columns,
+                                    scales,
+                                }
                             }
                             Rule::facet_grid => {
                                 let mut inner = facet_inner.into_inner();
-                                let grid_spec = inner.next().unwrap();
+                                let grid_spec =
+                                    inner.next().ok_or_else(|| GglangError::Parse {
+                                        message: "Expected grid spec in facet_grid".to_string(),
+                                    })?;
                                 let (row_var, col_var) = match grid_spec.as_rule() {
                                     Rule::facet_rows_cols => {
                                         let mut gi = grid_spec.into_inner();
-                                        let row = parse_data_reference(gi.next().unwrap());
-                                        let col = parse_data_reference(gi.next().unwrap());
+                                        let row = parse_data_reference(gi.next().ok_or_else(
+                                            || GglangError::Parse {
+                                                message: "Expected row variable in FACET GRID ROWS COLS".to_string(),
+                                            },
+                                        )?)?;
+                                        let col = parse_data_reference(gi.next().ok_or_else(
+                                            || GglangError::Parse {
+                                                message: "Expected col variable in FACET GRID ROWS COLS".to_string(),
+                                            },
+                                        )?)?;
                                         (Some(row), Some(col))
                                     }
                                     Rule::facet_rows_only => {
                                         let mut gi = grid_spec.into_inner();
-                                        let row = parse_data_reference(gi.next().unwrap());
+                                        let row = parse_data_reference(gi.next().ok_or_else(
+                                            || GglangError::Parse {
+                                                message: "Expected row variable in FACET GRID ROWS".to_string(),
+                                            },
+                                        )?)?;
                                         (Some(row), None)
                                     }
                                     Rule::facet_cols_only => {
                                         let mut gi = grid_spec.into_inner();
-                                        let col = parse_data_reference(gi.next().unwrap());
+                                        let col = parse_data_reference(gi.next().ok_or_else(
+                                            || GglangError::Parse {
+                                                message: "Expected col variable in FACET GRID COLS".to_string(),
+                                            },
+                                        )?)?;
                                         (None, Some(col))
                                     }
                                     _ => unreachable!(),
@@ -247,29 +365,57 @@ pub fn parse(source: &str) -> Result<Program, String> {
                                 let mut scales = ScaleFreedom::Fixed;
                                 for pair in inner {
                                     if pair.as_rule() == Rule::facet_scales {
-                                        scales = parse_facet_scales(pair);
+                                        scales = parse_facet_scales(pair)?;
                                     }
                                 }
-                                FacetSpec::Grid { row_var, col_var, scales }
+                                FacetSpec::Grid {
+                                    row_var,
+                                    col_var,
+                                    scales,
+                                }
                             }
                             _ => unreachable!(),
                         };
                         statements.push(Statement::Facet(spec));
                     }
                     Rule::title_statement => {
-                        let s = stmt_inner.into_inner().next().unwrap().as_str();
+                        let s = stmt_inner
+                            .into_inner()
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected string in title_statement".to_string(),
+                            })?
+                            .as_str();
                         statements.push(Statement::Title(s[1..s.len() - 1].to_string()));
                     }
                     Rule::caption_statement => {
-                        let s = stmt_inner.into_inner().next().unwrap().as_str();
+                        let s = stmt_inner
+                            .into_inner()
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected string in caption_statement".to_string(),
+                            })?
+                            .as_str();
                         statements.push(Statement::Caption(s[1..s.len() - 1].to_string()));
                     }
                     Rule::xlabel_statement => {
-                        let s = stmt_inner.into_inner().next().unwrap().as_str();
+                        let s = stmt_inner
+                            .into_inner()
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected string in xlabel_statement".to_string(),
+                            })?
+                            .as_str();
                         statements.push(Statement::XLabel(s[1..s.len() - 1].to_string()));
                     }
                     Rule::ylabel_statement => {
-                        let s = stmt_inner.into_inner().next().unwrap().as_str();
+                        let s = stmt_inner
+                            .into_inner()
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected string in ylabel_statement".to_string(),
+                            })?
+                            .as_str();
                         statements.push(Statement::YLabel(s[1..s.len() - 1].to_string()));
                     }
                     _ => {}
@@ -431,7 +577,11 @@ mod tests {
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 3);
         match &program.statements[2] {
-            Statement::Facet(FacetSpec::Wrap { variable, columns, scales }) => {
+            Statement::Facet(FacetSpec::Wrap {
+                variable,
+                columns,
+                scales,
+            }) => {
                 assert_eq!(variable, "region");
                 assert!(columns.is_none());
                 assert_eq!(*scales, ScaleFreedom::Fixed);
@@ -445,7 +595,11 @@ mod tests {
         let source = "FACET WRAP :group COLUMNS 3";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(FacetSpec::Wrap { variable, columns, scales }) => {
+            Statement::Facet(FacetSpec::Wrap {
+                variable,
+                columns,
+                scales,
+            }) => {
                 assert_eq!(variable, "group");
                 assert_eq!(*columns, Some(3));
                 assert_eq!(*scales, ScaleFreedom::Fixed);
@@ -508,7 +662,11 @@ mod tests {
         let source = "FACET WRAP :store COLUMNS 3 SCALES FREE";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(FacetSpec::Wrap { variable, columns, scales }) => {
+            Statement::Facet(FacetSpec::Wrap {
+                variable,
+                columns,
+                scales,
+            }) => {
                 assert_eq!(variable, "store");
                 assert_eq!(*columns, Some(3));
                 assert_eq!(*scales, ScaleFreedom::Free);
@@ -522,7 +680,11 @@ mod tests {
         let source = "FACET GRID ROWS :store";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+            Statement::Facet(FacetSpec::Grid {
+                row_var,
+                col_var,
+                scales,
+            }) => {
                 assert_eq!(row_var.as_deref(), Some("store"));
                 assert!(col_var.is_none());
                 assert_eq!(*scales, ScaleFreedom::Fixed);
@@ -536,7 +698,11 @@ mod tests {
         let source = "FACET GRID COLS :town";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+            Statement::Facet(FacetSpec::Grid {
+                row_var,
+                col_var,
+                scales,
+            }) => {
                 assert!(row_var.is_none());
                 assert_eq!(col_var.as_deref(), Some("town"));
                 assert_eq!(*scales, ScaleFreedom::Fixed);
@@ -550,7 +716,11 @@ mod tests {
         let source = "FACET GRID ROWS :store COLS :town";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+            Statement::Facet(FacetSpec::Grid {
+                row_var,
+                col_var,
+                scales,
+            }) => {
                 assert_eq!(row_var.as_deref(), Some("store"));
                 assert_eq!(col_var.as_deref(), Some("town"));
                 assert_eq!(*scales, ScaleFreedom::Fixed);
@@ -564,7 +734,11 @@ mod tests {
         let source = "FACET GRID ROWS :store COLS :town SCALES FREE X";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Facet(FacetSpec::Grid { row_var, col_var, scales }) => {
+            Statement::Facet(FacetSpec::Grid {
+                row_var,
+                col_var,
+                scales,
+            }) => {
                 assert_eq!(row_var.as_deref(), Some("store"));
                 assert_eq!(col_var.as_deref(), Some("town"));
                 assert_eq!(*scales, ScaleFreedom::FreeX);

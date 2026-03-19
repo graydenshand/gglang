@@ -1,5 +1,6 @@
 use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
 use crate::ast::{AstAesthetic, GeomAttribute, GeometryType, LiteralValue, Program, Statement};
+use crate::error::GglangError;
 use crate::geom::{GeomLine, GeomPoint};
 use crate::plot::{Blueprint, Layer};
 use crate::scale::{default_scale_for, IdentityTransform};
@@ -15,7 +16,7 @@ fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
     }
 }
 
-pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, String> {
+pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, GglangError> {
     let mut bp = Blueprint::new(theme);
     let mut mappings: Vec<Mapping> = vec![];
     let mut mapped_aesthetics: Vec<Aesthetic> = vec![];
@@ -49,7 +50,11 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                             let aesthetic = ast_aesthetic_to_aesthetic(aes);
                             let constant = match val {
                                 LiteralValue::Str(s) => {
-                                    ConstantValue::Color(parse_hex_color(s)?)
+                                    ConstantValue::Color(
+                                        parse_hex_color(s).map_err(|e| GglangError::Compile {
+                                            message: e,
+                                        })?,
+                                    )
                                 }
                                 LiteralValue::Number(n) => ConstantValue::Float(*n),
                             };

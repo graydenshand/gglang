@@ -45,6 +45,7 @@ Layer 4
 
 pub mod aesthetic;
 pub mod app;
+pub mod error;
 pub mod ast;
 pub mod column;
 pub mod compile;

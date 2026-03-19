@@ -1,6 +1,7 @@
 use crate::aesthetic::{Aesthetic, AestheticFamily, ConstantValue, Mapping};
 use crate::ast::{FacetSpec, ScaleFreedom};
 use crate::column::{AesData, MappedColumn, PlotData, RawColumn, ResolvedData};
+use crate::error::GglangError;
 use crate::geom::Geometry;
 use crate::layout::{LayoutNode, PlotOutput, PlotRegion, RegionKey, SizeSpec, SplitAxis, Unit};
 use crate::scale::{default_scale_for, PositionAdjustment, Scale, StatTransform};
@@ -119,7 +120,7 @@ impl<'a> Blueprint<'a> {
     }
 
     /// Build AesData for each layer given a dataset (handles effective mappings + constants).
-    fn build_layer_aes(&self, data: &PlotData) -> Result<Vec<AesData>, String> {
+    fn build_layer_aes(&self, data: &PlotData) -> Result<Vec<AesData>, GglangError> {
         let mut per_layer_aes: Vec<AesData> = Vec::with_capacity(self.layers.len());
         for layer in &self.layers {
             let mut effective: HashMap<Aesthetic, &str> = self
@@ -135,9 +136,9 @@ impl<'a> Blueprint<'a> {
             }
             let mut aes_data = AesData::new();
             for (aes, var) in &effective {
-                let col = data
-                    .get(var)
-                    .ok_or_else(|| format!("Column '{}' not found in data", var))?;
+                let col = data.get(var).ok_or_else(|| GglangError::Render {
+                    message: format!("Column '{}' not found in data", var),
+                })?;
                 aes_data.insert(*aes, col.clone());
             }
             per_layer_aes.push(aes_data);
@@ -151,7 +152,7 @@ impl<'a> Blueprint<'a> {
         layer: &Layer,
         layer_aes: &AesData,
         scales: &[Box<dyn Scale>],
-    ) -> Result<ResolvedData, String> {
+    ) -> Result<ResolvedData, GglangError> {
         let refs: Vec<&dyn Scale> = scales.iter().map(|s| s.as_ref()).collect();
         self.resolve_layer_with_scale_refs(layer, layer_aes, &refs)
     }
@@ -162,7 +163,7 @@ impl<'a> Blueprint<'a> {
         layer: &Layer,
         layer_aes: &AesData,
         scales: &[&dyn Scale],
-    ) -> Result<ResolvedData, String> {
+    ) -> Result<ResolvedData, GglangError> {
         let mut resolved = ResolvedData {
             mapped: HashMap::new(),
             raw: HashMap::new(),
@@ -204,7 +205,7 @@ impl<'a> Blueprint<'a> {
     }
 
     /// Bulk-map a single layer's AesData through the blueprint's fitted scales.
-    fn resolve_layer(&self, layer: &Layer, layer_aes: &AesData) -> Result<ResolvedData, String> {
+    fn resolve_layer(&self, layer: &Layer, layer_aes: &AesData) -> Result<ResolvedData, GglangError> {
         self.resolve_layer_with_scales(layer, layer_aes, &self.scales)
     }
 
@@ -266,7 +267,7 @@ impl<'a> Blueprint<'a> {
     ///
     /// Data is provided with raw column names; the blueprint's mappings are
     /// applied to bind columns to aesthetic channels before rendering.
-    pub fn render(&mut self, raw_data: PlotData) -> Result<PlotOutput, String> {
+    pub fn render(&mut self, raw_data: PlotData) -> Result<PlotOutput, GglangError> {
         // Step 1: Auto-map — discover aesthetics whose name matches a column name
         // and add them to blueprint mappings (if not already explicitly mapped).
         let mut already_mapped: Vec<Aesthetic> =
@@ -297,7 +298,9 @@ impl<'a> Blueprint<'a> {
         for (i, layer) in self.layers.iter().enumerate() {
             for aes in layer.geometry.required_aesthetics() {
                 if !per_layer_aes[i].contains(aes) && !layer.constants.contains_key(&aes) {
-                    return Err(format!("Missing required aesthetic {}", aes.name()));
+                    return Err(GglangError::Render {
+                        message: format!("Missing required aesthetic '{}'", aes.name()),
+                    });
                 }
             }
         }
@@ -314,7 +317,7 @@ impl<'a> Blueprint<'a> {
         let mut layer_aes_map: HashMap<usize, AesData> = HashMap::new();
         for (i, layer) in self.layers.iter().enumerate() {
             let transformed = layer.stat.transform(&per_layer_aes[i]);
-            layer.geometry.update_scales(&mut self.scales, &transformed);
+            layer.geometry.update_scales(&mut self.scales, &transformed)?;
             // Feed constant float values to scales so they're included in the domain
             for (aes, constant) in &layer.constants {
                 if let ConstantValue::Float(f) = constant {
@@ -331,7 +334,7 @@ impl<'a> Blueprint<'a> {
 
         // Step 6: Fit scales
         for scale in &mut self.scales {
-            scale.fit().expect("Scale can't be fit")
+            scale.fit()?;
         }
 
         let mut regions: HashMap<RegionKey, Vec<Element>> = HashMap::new();
@@ -353,7 +356,9 @@ impl<'a> Blueprint<'a> {
                     .any(|s| s.aesthetic_family() == AestheticFamily::Color);
                 let layout = match &spec {
                     FacetSpec::Wrap { variable, columns, scales } => {
-                        let facet_col = raw_data.get(variable).unwrap();
+                        let facet_col = raw_data.get(variable).ok_or_else(|| GglangError::Render {
+                            message: format!("Facet variable '{}' not found in data", variable),
+                        })?;
                         let num_panels = facet_col.distinct_strings().len();
                         let y_free = matches!(scales, ScaleFreedom::Free | ScaleFreedom::FreeY);
                         faceted_wrap_layout(
@@ -367,12 +372,20 @@ impl<'a> Blueprint<'a> {
                         )
                     }
                     FacetSpec::Grid { row_var, col_var, .. } => {
-                        let num_row_values = row_var.as_ref().map(|v| {
-                            raw_data.get(v).unwrap().distinct_strings().len()
-                        }).unwrap_or(1);
-                        let num_col_values = col_var.as_ref().map(|v| {
-                            raw_data.get(v).unwrap().distinct_strings().len()
-                        }).unwrap_or(1);
+                        let num_row_values = if let Some(v) = row_var.as_ref() {
+                            raw_data.get(v).ok_or_else(|| GglangError::Render {
+                                message: format!("Facet row variable '{}' not found in data", v),
+                            })?.distinct_strings().len()
+                        } else {
+                            1
+                        };
+                        let num_col_values = if let Some(v) = col_var.as_ref() {
+                            raw_data.get(v).ok_or_else(|| GglangError::Render {
+                                message: format!("Facet col variable '{}' not found in data", v),
+                            })?.distinct_strings().len()
+                        } else {
+                            1
+                        };
                         faceted_grid_layout(
                             num_row_values,
                             num_col_values,
@@ -390,9 +403,11 @@ impl<'a> Blueprint<'a> {
 
                 // Step 7: Bulk mapping + constant injection — build ResolvedData per layer
                 for (i, layer) in self.layers.iter().enumerate() {
-                    let layer_aes = layer_aes_map.get(&i).unwrap();
+                    let layer_aes = layer_aes_map.get(&i).ok_or_else(|| GglangError::Render {
+                        message: format!("Layer {} has no AesData", i),
+                    })?;
                     let resolved = self.resolve_layer(layer, layer_aes)?;
-                    let mut geom_elements = layer.geometry.render(&resolved);
+                    let mut geom_elements = layer.geometry.render(&resolved)?;
                     regions
                         .entry(RegionKey::shared(PlotRegion::DataArea))
                         .or_default()
@@ -401,7 +416,7 @@ impl<'a> Blueprint<'a> {
 
                 // Render scales — each declares its own region
                 for scale in &self.scales {
-                    let (region, mut scale_elements) = scale.render(self.theme);
+                    let (region, mut scale_elements) = scale.render(self.theme)?;
                     regions
                         .entry(RegionKey::shared(region))
                         .or_default()
@@ -430,10 +445,12 @@ impl<'a> Blueprint<'a> {
         facet_columns: Option<u32>,
         scale_freedom: &ScaleFreedom,
         regions: &mut HashMap<RegionKey, Vec<Element>>,
-    ) -> Result<(), String> {
+    ) -> Result<(), GglangError> {
         let facet_col = raw_data
             .get(facet_var)
-            .ok_or_else(|| format!("Facet column '{}' not found in data", facet_var))?
+            .ok_or_else(|| GglangError::Render {
+                message: format!("Facet column '{}' not found in data", facet_var),
+            })?
             .clone();
         let facet_values = facet_col.distinct_strings();
         let num_panels = facet_values.len();
@@ -501,7 +518,7 @@ impl<'a> Blueprint<'a> {
             // Render layer geometry
             for (i, layer) in self.layers.iter().enumerate() {
                 let resolved = self.resolve_layer_with_scale_refs(layer, &panel_layer_aes[i], &scale_refs)?;
-                let mut geom_elements = layer.geometry.render(&resolved);
+                let mut geom_elements = layer.geometry.render(&resolved)?;
                 regions
                     .entry(RegionKey::panel(PlotRegion::DataArea, panel_idx))
                     .or_default()
@@ -513,7 +530,7 @@ impl<'a> Blueprint<'a> {
             let emit_x_ticks = x_free || is_bottom_of_column;
             if emit_x_ticks {
                 for scale in &scale_refs {
-                    let (region, mut scale_elements) = scale.render(self.theme);
+                    let (region, mut scale_elements) = scale.render(self.theme)?;
                     if region == PlotRegion::XAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::XAxisGutter, panel_idx))
@@ -541,7 +558,7 @@ impl<'a> Blueprint<'a> {
                     x_free, y_free, &panel_scales[panel_idx],
                 );
                 for scale in &scale_refs {
-                    let (region, mut scale_elements) = scale.render(self.theme);
+                    let (region, mut scale_elements) = scale.render(self.theme)?;
                     if region == PlotRegion::YAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::YAxisGutter, panel_idx))
@@ -553,7 +570,7 @@ impl<'a> Blueprint<'a> {
         } else {
             for row in 0..num_rows {
                 for scale in &self.scales {
-                    let (region, mut scale_elements) = scale.render(self.theme);
+                    let (region, mut scale_elements) = scale.render(self.theme)?;
                     if region == PlotRegion::YAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::YAxisGutter, row))
@@ -566,7 +583,7 @@ impl<'a> Blueprint<'a> {
 
         // Shared legend
         for scale in &self.scales {
-            let (region, mut scale_elements) = scale.render(self.theme);
+            let (region, mut scale_elements) = scale.render(self.theme)?;
             if region == PlotRegion::Legend {
                 regions
                     .entry(RegionKey::shared(PlotRegion::Legend))
@@ -589,17 +606,19 @@ impl<'a> Blueprint<'a> {
         col_var: Option<&str>,
         scale_freedom: &ScaleFreedom,
         regions: &mut HashMap<RegionKey, Vec<Element>>,
-    ) -> Result<(), String> {
+    ) -> Result<(), GglangError> {
         let row_values: Vec<String> = if let Some(rv) = row_var {
-            let col = raw_data.get(rv)
-                .ok_or_else(|| format!("Row facet column '{}' not found", rv))?;
+            let col = raw_data.get(rv).ok_or_else(|| GglangError::Render {
+                message: format!("Row facet column '{}' not found", rv),
+            })?;
             col.distinct_strings()
         } else {
             vec!["".to_string()]
         };
         let col_values: Vec<String> = if let Some(cv) = col_var {
-            let col = raw_data.get(cv)
-                .ok_or_else(|| format!("Col facet column '{}' not found", cv))?;
+            let col = raw_data.get(cv).ok_or_else(|| GglangError::Render {
+                message: format!("Col facet column '{}' not found", cv),
+            })?;
             col.distinct_strings()
         } else {
             vec!["".to_string()]
@@ -748,7 +767,7 @@ impl<'a> Blueprint<'a> {
 
                 for (i, layer) in self.layers.iter().enumerate() {
                     let resolved = self.resolve_layer_with_scale_refs(layer, &panel_layer_aes[i], &scale_refs)?;
-                    let mut geom_elements = layer.geometry.render(&resolved);
+                    let mut geom_elements = layer.geometry.render(&resolved)?;
                     regions
                         .entry(RegionKey::panel(PlotRegion::DataArea, panel_idx))
                         .or_default()
@@ -764,7 +783,7 @@ impl<'a> Blueprint<'a> {
                 let is_bottom_row = ri == num_grid_rows - 1;
                 if is_bottom_row || x_free {
                     for scale in &scale_refs {
-                        let (region, mut elements) = scale.render(self.theme);
+                        let (region, mut elements) = scale.render(self.theme)?;
                         if region == PlotRegion::XAxisGutter {
                             regions
                                 .entry(RegionKey::panel(PlotRegion::XAxisGutter, panel_idx))
@@ -784,7 +803,7 @@ impl<'a> Blueprint<'a> {
                     let panel_idx2 = ri * num_grid_cols + ci2;
                     if let Some(ref cys) = col_y_scales {
                         for scale in &cys[ci2] {
-                            let (region, mut elements) = scale.render(self.theme);
+                            let (region, mut elements) = scale.render(self.theme)?;
                             if region == PlotRegion::YAxisGutter {
                                 regions
                                     .entry(RegionKey::panel(PlotRegion::YAxisGutter, panel_idx2))
@@ -801,7 +820,7 @@ impl<'a> Blueprint<'a> {
                     &self.scales
                 };
                 for scale in row_scales {
-                    let (region, mut elements) = scale.render(self.theme);
+                    let (region, mut elements) = scale.render(self.theme)?;
                     if region == PlotRegion::YAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::YAxisGutter, ri))
@@ -826,7 +845,7 @@ impl<'a> Blueprint<'a> {
 
         // Shared legend
         for scale in &self.scales {
-            let (region, mut scale_elements) = scale.render(self.theme);
+            let (region, mut scale_elements) = scale.render(self.theme)?;
             if region == PlotRegion::Legend {
                 regions
                     .entry(RegionKey::shared(PlotRegion::Legend))
@@ -849,16 +868,20 @@ impl<'a> Blueprint<'a> {
         row_val: &str,
         col_var: Option<&str>,
         col_val: &str,
-    ) -> Result<PlotData, String> {
+    ) -> Result<PlotData, GglangError> {
         let mut indices: Option<Vec<usize>> = None;
 
         if let Some(rv) = row_var {
-            let col = raw_data.get(rv).unwrap();
+            let col = raw_data.get(rv).ok_or_else(|| GglangError::Render {
+                message: format!("Row facet column '{}' not found in data", rv),
+            })?;
             let row_indices = col.indices_where_eq(row_val);
             indices = Some(row_indices);
         }
         if let Some(cv) = col_var {
-            let col = raw_data.get(cv).unwrap();
+            let col = raw_data.get(cv).ok_or_else(|| GglangError::Render {
+                message: format!("Col facet column '{}' not found in data", cv),
+            })?;
             let col_indices = col.indices_where_eq(col_val);
             indices = Some(match indices {
                 Some(existing) => {
@@ -907,7 +930,7 @@ impl<'a> Blueprint<'a> {
     }
 
     /// Build unfitted scale copies for a specific family.
-    fn build_free_scales_for_family(&self, family: AestheticFamily) -> Result<Vec<Box<dyn Scale>>, String> {
+    fn build_free_scales_for_family(&self, family: AestheticFamily) -> Result<Vec<Box<dyn Scale>>, GglangError> {
         Ok(self.scales.iter()
             .filter(|s| s.aesthetic_family() == family)
             .map(|s| s.clone_unfitted())

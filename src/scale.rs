@@ -1,5 +1,6 @@
 use crate::aesthetic::{Aesthetic, AestheticFamily};
 use crate::column::{AesData, MappedColumn, RawColumn};
+use crate::error::GglangError;
 use crate::layout::{PlotRegion, Unit};
 use crate::shape::{Element, HAlign, Rectangle, Text, VAlign};
 use crate::theme::Theme;
@@ -34,16 +35,16 @@ pub trait Scale {
     }
 
     /// Map an array of raw column values through the scale, returning mapped output.
-    fn map(&self, v: &RawColumn) -> Result<MappedColumn, String>;
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError>;
 
     /// Append a set of raw column values to the scale
-    fn append(&mut self, v: &RawColumn) -> Result<(), String>;
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError>;
 
     /// Fit the scale to the data
-    fn fit(&mut self) -> Result<(), String>;
+    fn fit(&mut self) -> Result<(), GglangError>;
 
     /// Render the elements for this scale, returning them tagged with their target region.
-    fn render(&self, theme: &Theme) -> (PlotRegion, Vec<Element>);
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError>;
 
     /// Return the family this scale belongs to.
     fn aesthetic_family(&self) -> AestheticFamily;
@@ -126,7 +127,7 @@ impl ScalePositionContinuous {
         }
     }
 
-    fn render_x_axis(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
+    fn render_x_axis(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
         let mut elements = vec![];
 
         // Axis line: full width at top of gutter (adjacent to DataArea)
@@ -138,8 +139,12 @@ impl ScalePositionContinuous {
         );
         elements.push(Element::Rect(xaxis));
 
-        let s = &self.data_scale.expect("Scale isn't fit");
-        let step = self.tick_step.expect("Scale isn't fit");
+        let s = self.data_scale.as_ref().ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
+        let step = self.tick_step.ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
         let tick_values = ticks_from_step(s.min, s.max, step);
         let labels = format_ticks(&tick_values);
         for (tick_value, label) in tick_values.iter().zip(labels) {
@@ -162,10 +167,10 @@ impl ScalePositionContinuous {
             )));
         }
 
-        (PlotRegion::XAxisGutter, elements)
+        Ok((PlotRegion::XAxisGutter, elements))
     }
 
-    fn render_y_axis(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
+    fn render_y_axis(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
         let mut elements: Vec<Element> = vec![];
 
         // Axis line: at right edge of gutter (adjacent to DataArea), full height
@@ -177,8 +182,12 @@ impl ScalePositionContinuous {
         );
         elements.push(Element::Rect(yaxis));
 
-        let s = &self.data_scale.expect("Scale isn't fit");
-        let step = self.tick_step.expect("Scale isn't fit");
+        let s = self.data_scale.as_ref().ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
+        let step = self.tick_step.ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
         let tick_values = ticks_from_step(s.min, s.max, step);
         let labels = format_ticks(&tick_values);
         for (tick_value, label) in tick_values.iter().zip(labels) {
@@ -204,12 +213,12 @@ impl ScalePositionContinuous {
             ));
         }
 
-        (PlotRegion::YAxisGutter, elements)
+        Ok((PlotRegion::YAxisGutter, elements))
     }
 }
 
 impl Scale for ScalePositionContinuous {
-    fn fit(&mut self) -> Result<(), String> {
+    fn fit(&mut self) -> Result<(), GglangError> {
         if let Some(s) = &self.data_scale {
             let (nice_min, nice_max) = nice_bounds(s.min, s.max, TARGET_TICK_COUNT);
             // Compute step from the raw range; fall back to the expanded range for the
@@ -228,8 +237,8 @@ impl Scale for ScalePositionContinuous {
         Ok(())
     }
 
-    fn map(&self, v: &RawColumn) -> Result<MappedColumn, String> {
-        let values = v.as_f64()?;
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
+        let values = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
 
         if let Some(s) = &self.data_scale {
             Ok(MappedColumn::UnitArray(
@@ -239,11 +248,13 @@ impl Scale for ScalePositionContinuous {
                     .collect(),
             ))
         } else {
-            Err("Scale is uninitialized".into())
+            Err(GglangError::Render {
+                message: "Scale is uninitialized".to_string(),
+            })
         }
     }
 
-    fn render(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
         match self.axis {
             Axis::X => self.render_x_axis(theme),
             Axis::Y => self.render_y_axis(theme),
@@ -257,8 +268,11 @@ impl Scale for ScalePositionContinuous {
         }
     }
 
-    fn append(&mut self, v: &RawColumn) -> Result<(), String> {
-        let new_scale = ContinuousNumericScale::from_vec(&v.as_f64()?);
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
+        let new_scale =
+            ContinuousNumericScale::from_vec(&v.as_f64().map_err(|e| GglangError::Render {
+                message: e,
+            })?);
         if let Some(s) = &self.data_scale {
             self.data_scale = Some(s.union(&new_scale));
         } else {
@@ -305,7 +319,7 @@ impl ScaleColorDiscrete {
 }
 
 impl Scale for ScaleColorDiscrete {
-    fn append(&mut self, v: &RawColumn) -> Result<(), String> {
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
         match v {
             RawColumn::StringArray(strings) => {
                 for s in strings {
@@ -315,11 +329,13 @@ impl Scale for ScaleColorDiscrete {
                 }
                 Ok(())
             }
-            _ => Err("ScaleColorDiscrete expects StringArray".into()),
+            _ => Err(GglangError::Render {
+                message: "ScaleColorDiscrete expects StringArray".to_string(),
+            }),
         }
     }
 
-    fn fit(&mut self) -> Result<(), String> {
+    fn fit(&mut self) -> Result<(), GglangError> {
         let n = self.categories.len();
         self.palette = (0..n)
             .map(|i| {
@@ -330,27 +346,30 @@ impl Scale for ScaleColorDiscrete {
         Ok(())
     }
 
-    fn map(&self, v: &RawColumn) -> Result<MappedColumn, String> {
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
         match v {
             RawColumn::StringArray(strings) => {
-                let colors: Vec<[f32; 3]> = strings
+                let colors: Result<Vec<[f32; 3]>, GglangError> = strings
                     .iter()
                     .map(|s| {
-                        let idx = self
-                            .categories
+                        self.categories
                             .iter()
                             .position(|c| c == s)
-                            .expect("category not found in scale");
-                        self.palette[idx]
+                            .map(|idx| self.palette[idx])
+                            .ok_or_else(|| GglangError::Render {
+                                message: format!("Category '{}' not found in color scale", s),
+                            })
                     })
                     .collect();
-                Ok(MappedColumn::ColorArray(colors))
+                Ok(MappedColumn::ColorArray(colors?))
             }
-            _ => Err("ScaleColorDiscrete expects StringArray".into()),
+            _ => Err(GglangError::Render {
+                message: "ScaleColorDiscrete expects StringArray".to_string(),
+            }),
         }
     }
 
-    fn render(&self, theme: &Theme) -> (PlotRegion, Vec<Element>) {
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
         let mut elements = vec![];
         // Region-local coords: NDC(-1..1) spans the legend segment
         let y_start = 0.7_f32;
@@ -375,7 +394,7 @@ impl Scale for ScaleColorDiscrete {
                 .with_v_align(VAlign::Center),
             ));
         }
-        (PlotRegion::Legend, elements)
+        Ok((PlotRegion::Legend, elements))
     }
 
     fn aesthetic_family(&self) -> AestheticFamily {
@@ -474,7 +493,7 @@ mod test {
 
         // First unique value gets hue 0, second gets hue 180
         let theme = crate::theme::Theme::default();
-        let (region, legend) = scale.render(&theme);
+        let (region, legend) = scale.render(&theme).unwrap();
         assert_eq!(region, PlotRegion::Legend);
         // Legend should have 2 entries (swatch + label each)
         assert_eq!(legend.len(), 4);

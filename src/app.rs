@@ -358,7 +358,7 @@ pub fn run(mut blueprint: Blueprint, data: PlotData) -> anyhow::Result<()> {
         console_log::init_with_level(log::Level::Info).unwrap_throw();
     }
 
-    let plot_output = blueprint.render(data).map_err(|e| anyhow::anyhow!(e))?;
+    let plot_output = blueprint.render(data)?;
     let theme = Theme::default();
 
     let event_loop = EventLoop::with_user_event().build()?;

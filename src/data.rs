@@ -1,13 +1,17 @@
 use std::path::Path;
 
 use crate::column::{PlotData, RawColumn};
+use crate::error::GglangError;
 
-pub fn load_csv(path: &Path) -> Result<PlotData, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("Failed to read CSV: {}", e))?;
+pub fn load_csv(path: &Path) -> Result<PlotData, GglangError> {
+    let content = std::fs::read_to_string(path).map_err(|e| GglangError::Data {
+        message: format!("Failed to read CSV: {}", e),
+    })?;
 
     let mut lines = content.lines();
-    let header = lines.next().ok_or("CSV file is empty")?;
+    let header = lines.next().ok_or_else(|| GglangError::Data {
+        message: "CSV file is empty".to_string(),
+    })?;
     let columns: Vec<&str> = header.split(',').map(|s| s.trim()).collect();
 
     // Read all values as strings first
@@ -19,12 +23,14 @@ pub fn load_csv(path: &Path) -> Result<PlotData, String> {
         }
         let values: Vec<&str> = line.split(',').collect();
         if values.len() != columns.len() {
-            return Err(format!(
-                "Row {} has {} columns, expected {}",
-                line_num + 2,
-                values.len(),
-                columns.len()
-            ));
+            return Err(GglangError::Data {
+                message: format!(
+                    "Row {} has {} columns, expected {}",
+                    line_num + 2,
+                    values.len(),
+                    columns.len()
+                ),
+            });
         }
         for (i, val) in values.iter().enumerate() {
             string_data[i].push(val.trim().to_string());
