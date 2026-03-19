@@ -2084,7 +2084,7 @@ mod test {
     fn faceted_wrap_layout_resolves_all_panels() {
         let seg = layout_test_segment();
         let theme = Theme::default();
-        let layout = faceted_wrap_layout(3, None, true, false, false, &theme);
+        let layout = faceted_wrap_layout(3, None, true, false, false, false, &theme);
         let regions = layout.resolve(&seg);
 
         for i in 0..3 {
@@ -2102,7 +2102,7 @@ mod test {
     fn facet_columns_override() {
         let seg = layout_test_segment();
         let theme = Theme::default();
-        let layout = faceted_wrap_layout(4, Some(4), false, false, false, &theme);
+        let layout = faceted_wrap_layout(4, Some(4), false, false, false, false, &theme);
         let regions = layout.resolve(&seg);
         for i in 0..4 {
             assert!(regions.contains_key(&RegionKey::panel(PlotRegion::DataArea, i)));

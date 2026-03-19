@@ -3,7 +3,22 @@ use crate::column::{AesData, MappedColumn, RawColumn};
 use crate::layout::{PlotRegion, Unit};
 use crate::shape::{Element, HAlign, Rectangle, Text, VAlign};
 use crate::theme::Theme;
-use crate::transform::{nice_ticks, ContinuousNumericScale, NDC_SCALE};
+use crate::transform::{nice_bounds, nice_step, ContinuousNumericScale, NDC_SCALE};
+
+/// Enumerate tick values from `min` to `max` using the given step size.
+/// Both `min` and `max` must already be multiples of `step` (i.e. nice bounds).
+fn ticks_from_step(min: f64, max: f64, step: f64) -> Vec<f64> {
+    if step <= 0.0 || !step.is_finite() {
+        return vec![min];
+    }
+    let mut ticks = vec![];
+    let mut tick = min;
+    while tick <= max + step * 1e-10 {
+        ticks.push(tick);
+        tick += step;
+    }
+    ticks
+}
 
 /// Scales produce legends.
 /// They are used to convert between the projection on the screen and the data.
@@ -84,6 +99,8 @@ fn format_ticks(values: &[f64]) -> Vec<String> {
     }).collect()
 }
 
+const TARGET_TICK_COUNT: usize = 5;
+
 /// Which axis a positional scale operates on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -95,6 +112,9 @@ pub enum Axis {
 pub struct ScalePositionContinuous {
     axis: Axis,
     data_scale: Option<ContinuousNumericScale>,
+    /// Step size computed from the raw data range during fit(); used for tick generation
+    /// so that the same step that aligned the axis bounds also spaces the tick marks.
+    tick_step: Option<f64>,
 }
 
 impl ScalePositionContinuous {
@@ -102,6 +122,7 @@ impl ScalePositionContinuous {
         Self {
             axis,
             data_scale: None,
+            tick_step: None,
         }
     }
 
@@ -118,7 +139,8 @@ impl ScalePositionContinuous {
         elements.push(Element::Rect(xaxis));
 
         let s = &self.data_scale.expect("Scale isn't fit");
-        let tick_values = nice_ticks(s.min, s.max, 5);
+        let step = self.tick_step.expect("Scale isn't fit");
+        let tick_values = ticks_from_step(s.min, s.max, step);
         let labels = format_ticks(&tick_values);
         for (tick_value, label) in tick_values.iter().zip(labels) {
             let x_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
@@ -156,7 +178,8 @@ impl ScalePositionContinuous {
         elements.push(Element::Rect(yaxis));
 
         let s = &self.data_scale.expect("Scale isn't fit");
-        let tick_values = nice_ticks(s.min, s.max, 5);
+        let step = self.tick_step.expect("Scale isn't fit");
+        let tick_values = ticks_from_step(s.min, s.max, step);
         let labels = format_ticks(&tick_values);
         for (tick_value, label) in tick_values.iter().zip(labels) {
             let y_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
@@ -188,7 +211,19 @@ impl ScalePositionContinuous {
 impl Scale for ScalePositionContinuous {
     fn fit(&mut self) -> Result<(), String> {
         if let Some(s) = &self.data_scale {
-            self.data_scale = Some(s.scale(1.1));
+            let (nice_min, nice_max) = nice_bounds(s.min, s.max, TARGET_TICK_COUNT);
+            // Compute step from the raw range; fall back to the expanded range for the
+            // degenerate case (min == max) where nice_step would receive a zero-width range.
+            let step = if s.min == s.max {
+                nice_step(nice_min, nice_max, TARGET_TICK_COUNT)
+            } else {
+                nice_step(s.min, s.max, TARGET_TICK_COUNT)
+            };
+            self.data_scale = Some(ContinuousNumericScale {
+                min: nice_min,
+                max: nice_max,
+            });
+            self.tick_step = Some(step);
         }
         Ok(())
     }
