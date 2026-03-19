@@ -102,6 +102,11 @@ fn format_ticks(values: &[f64]) -> Vec<String> {
 
 const TARGET_TICK_COUNT: usize = 5;
 
+/// Multiplicative expansion applied to each side of the fitted domain,
+/// preventing data points at the extremes from overlapping axis lines.
+/// Matches ggplot2's default `expansion(mult = 0.05)`.
+const SCALE_EXPAND_MULT: f64 = 0.05;
+
 /// Which axis a positional scale operates on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -113,6 +118,8 @@ pub enum Axis {
 pub struct ScalePositionContinuous {
     axis: Axis,
     data_scale: Option<ContinuousNumericScale>,
+    /// Nice bounds before expansion — used to generate tick values at clean numbers.
+    tick_bounds: Option<(f64, f64)>,
     /// Step size computed from the raw data range during fit(); used for tick generation
     /// so that the same step that aligned the axis bounds also spaces the tick marks.
     tick_step: Option<f64>,
@@ -123,6 +130,7 @@ impl ScalePositionContinuous {
         Self {
             axis,
             data_scale: None,
+            tick_bounds: None,
             tick_step: None,
         }
     }
@@ -142,10 +150,13 @@ impl ScalePositionContinuous {
         let s = self.data_scale.as_ref().ok_or_else(|| GglangError::Render {
             message: "Scale must be fit before rendering".to_string(),
         })?;
+        let (tick_min, tick_max) = self.tick_bounds.ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
         let step = self.tick_step.ok_or_else(|| GglangError::Render {
             message: "Scale must be fit before rendering".to_string(),
         })?;
-        let tick_values = ticks_from_step(s.min, s.max, step);
+        let tick_values = ticks_from_step(tick_min, tick_max, step);
         let labels = format_ticks(&tick_values);
         for (tick_value, label) in tick_values.iter().zip(labels) {
             let x_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
@@ -185,10 +196,13 @@ impl ScalePositionContinuous {
         let s = self.data_scale.as_ref().ok_or_else(|| GglangError::Render {
             message: "Scale must be fit before rendering".to_string(),
         })?;
+        let (tick_min, tick_max) = self.tick_bounds.ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
         let step = self.tick_step.ok_or_else(|| GglangError::Render {
             message: "Scale must be fit before rendering".to_string(),
         })?;
-        let tick_values = ticks_from_step(s.min, s.max, step);
+        let tick_values = ticks_from_step(tick_min, tick_max, step);
         let labels = format_ticks(&tick_values);
         for (tick_value, label) in tick_values.iter().zip(labels) {
             let y_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
@@ -228,10 +242,14 @@ impl Scale for ScalePositionContinuous {
             } else {
                 nice_step(s.min, s.max, TARGET_TICK_COUNT)
             };
+            // Expand the domain slightly beyond the nice bounds so data points
+            // at the extremes don't sit on the axis lines (like ggplot2's expand).
+            let expand = (nice_max - nice_min) * SCALE_EXPAND_MULT;
             self.data_scale = Some(ContinuousNumericScale {
-                min: nice_min,
-                max: nice_max,
+                min: nice_min - expand,
+                max: nice_max + expand,
             });
+            self.tick_bounds = Some((nice_min, nice_max));
             self.tick_step = Some(step);
         }
         Ok(())
