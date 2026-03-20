@@ -101,7 +101,9 @@ GEOM POINT
 MAP x=:day, y=:price, group=:ticker, color=:ticker
 GEOM LINE                          // timeseries line plot
 
-SCALE X_CONTINUOUS
+SCALE X CONTINUOUS                             // explicit continuous X (default for numeric)
+SCALE X DISCRETE                              // force categorical X (auto-detected for string columns)
+SCALE Y DISCRETE                              // force categorical Y
 FACET WRAP :store                              // wrap panels into auto grid
 FACET WRAP :store COLUMNS 3                    // wrap, forced 3 columns
 FACET GRID ROWS :store                         // single column of panels
@@ -116,7 +118,7 @@ FACET WRAP :store SCALES FIXED                 // both shared (default)
 TITLE "My plot"
 ```
 
-Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. Faceting splits data into panels; `WRAP` auto-grids one variable, `GRID` creates a strict rows×cols matrix from one or two variables. `SCALES` controls axis sharing (`FREE`/`FREE X`/`FREE Y`/`FIXED`).
+Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. `SCALE X/Y CONTINUOUS/DISCRETE` overrides auto-detected scale types — string columns auto-select `DISCRETE`, numeric columns auto-select `CONTINUOUS`. Faceting splits data into panels; `WRAP` auto-grids one variable, `GRID` creates a strict rows×cols matrix from one or two variables. `SCALES` controls axis sharing (`FREE`/`FREE X`/`FREE Y`/`FIXED`).
 
 ## Key architectural decisions
 

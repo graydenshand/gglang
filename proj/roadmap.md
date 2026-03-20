@@ -16,12 +16,9 @@
 13. ~~**Faceting**~~ — `FACET WRAP :var` and `FACET GRID ROWS :r COLS :c` with scale freedom controls.
 14. ~~**SVG/PNG export**~~ — `src/svg.rs` + `src/png.rs` via `resvg`. `--output <path>` flag on the `plot` binary. Pixel-coordinate methods (`px_x/y/width/height`) on `WindowSegment`.
 15. ~~**Error handling**~~ — Replace `.unwrap()`/`.expect()` panics with `Result` propagation and structured errors. Covers parser, compiler, data loading, and render paths.
+16. ~~**ScalePositionDiscrete**~~ — Categorical position scale; auto-detects string columns; `SCALE X/Y DISCRETE` syntax overrides numeric columns. Unblocks `GeomBar`.
 
 ## Current sprint
-
-
-
-3. **ScalePositionDiscrete** (`issues/issue-scale-position-discrete.md`) — Categorical position scale for bar charts, dot plots, and any categorical-axis visualization. Unblocks `GeomBar`.
 
 ## Backlog — Features
 

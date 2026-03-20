@@ -6,12 +6,18 @@ program = { SOI ~ statement* ~ EOI }
 statement = {
     map_statement |
     geom_statement |
+    scale_statement |
     facet_statement |
     title_statement |
     xlabel_statement |
     ylabel_statement |
     caption_statement
 }
+
+// Scale Statement
+scale_statement = { "SCALE" ~ scale_target ~ scale_type }
+scale_target    = { "X" | "Y" | "COLOR" }
+scale_type      = { "CONTINUOUS" | "DISCRETE" }
 
 // Title Statement
 title_statement = { "TITLE" ~ string_literal }

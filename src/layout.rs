@@ -4,7 +4,7 @@ use crate::shape::Element;
 use crate::transform::{ContinuousNumericScale, NDC_SCALE, PERCENT_SCALE};
 
 /// A value in a particular coordinate system
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Unit {
     // Pixels
     Pixels(u32),

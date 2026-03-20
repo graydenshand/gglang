@@ -284,7 +284,8 @@ impl<'a> Blueprint<'a> {
                 });
                 let family = aes.family();
                 if !self.scales.iter().any(|s| s.aesthetic_family() == family) {
-                    if let Some(scale) = default_scale_for(aes) {
+                    let data_hint = raw_data.get(aes.name());
+                    if let Some(scale) = default_scale_for(aes, data_hint) {
                         self.scales.push(scale);
                     }
                 }
@@ -293,6 +294,25 @@ impl<'a> Blueprint<'a> {
 
         // Step 2: Build per-layer AesData using effective mappings
         let per_layer_aes = self.build_layer_aes(&raw_data)?;
+
+        // Step 2b: Create default scales for explicitly-mapped aesthetics that don't
+        // have a scale yet (compile-time defaults were removed; we pick the right
+        // scale type now that we can inspect actual column types).
+        for aes in Aesthetic::all() {
+            let family = aes.family();
+            if self.has_scale_for_family(family) {
+                continue;
+            }
+            // Find the first layer that has data for this aesthetic
+            for layer_aes in &per_layer_aes {
+                if let Some(col) = layer_aes.get(*aes) {
+                    if let Some(scale) = default_scale_for(aes, Some(col)) {
+                        self.scales.push(scale);
+                    }
+                    break;
+                }
+            }
+        }
 
         // Step 3: Validate required aesthetics per layer
         for (i, layer) in self.layers.iter().enumerate() {

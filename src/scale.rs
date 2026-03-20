@@ -424,6 +424,168 @@ impl Scale for ScaleColorDiscrete {
     }
 }
 
+/// A discrete positional scale that maps categorical string values to evenly-spaced NDC positions.
+pub struct ScalePositionDiscrete {
+    axis: Axis,
+    categories: Vec<String>,
+}
+
+impl ScalePositionDiscrete {
+    pub fn new(axis: Axis) -> Self {
+        Self {
+            axis,
+            categories: vec![],
+        }
+    }
+
+    /// Width of each category band in NDC units (2.0 / N). Useful for future GeomBar.
+    pub fn band_width(&self) -> f32 {
+        if self.categories.is_empty() {
+            0.0
+        } else {
+            2.0 / self.categories.len() as f32
+        }
+    }
+
+    fn category_ndc(&self, i: usize) -> f32 {
+        let n = self.categories.len() as f32;
+        (2.0 * i as f32 + 1.0) / n - 1.0
+    }
+
+    fn raw_to_strings(v: &RawColumn) -> Vec<String> {
+        match v {
+            RawColumn::StringArray(s) => s.clone(),
+            RawColumn::FloatArray(f) => f.iter().map(|v| format!("{}", v)).collect(),
+            RawColumn::IntArray(i) => i.iter().map(|v| format!("{}", v)).collect(),
+        }
+    }
+
+    fn render_x_axis_discrete(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        let mut elements = vec![];
+
+        // Axis line at top of gutter
+        elements.push(Element::Rect(Rectangle::new(
+            [Unit::NDC(0.0), Unit::NDC(1.0)],
+            Unit::NDC(2.0),
+            Unit::Pixels(1),
+            theme.axis_color,
+        )));
+
+        for (i, cat) in self.categories.iter().enumerate() {
+            let x_ndc = self.category_ndc(i);
+
+            // Tick mark
+            elements.push(Element::Rect(Rectangle::new(
+                [Unit::NDC(x_ndc), Unit::NDC(1.0)],
+                Unit::Pixels(1),
+                Unit::Pixels(6),
+                theme.axis_color,
+            )));
+
+            // Label
+            elements.push(Element::Text(Text::centered(
+                cat.clone(),
+                theme.tick_label_font_size,
+                (Unit::NDC(x_ndc), Unit::NDC(0.8)),
+            )));
+        }
+
+        Ok((PlotRegion::XAxisGutter, elements))
+    }
+
+    fn render_y_axis_discrete(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        let mut elements = vec![];
+
+        // Axis line at right edge of gutter
+        elements.push(Element::Rect(Rectangle::new(
+            [Unit::NDC(1.0), Unit::NDC(0.0)],
+            Unit::Pixels(1),
+            Unit::NDC(2.0),
+            theme.axis_color,
+        )));
+
+        for (i, cat) in self.categories.iter().enumerate() {
+            let y_ndc = self.category_ndc(i);
+
+            // Tick mark
+            elements.push(Element::Rect(Rectangle::new(
+                [Unit::NDC(1.0), Unit::NDC(y_ndc)],
+                Unit::Pixels(6),
+                Unit::Pixels(1),
+                theme.axis_color,
+            )));
+
+            // Label
+            elements.push(Element::Text(
+                Text::new(
+                    cat.clone(),
+                    theme.tick_label_font_size,
+                    (Unit::Percent(85.0), Unit::NDC(y_ndc)),
+                )
+                .with_h_align(HAlign::Right)
+                .with_v_align(VAlign::Center),
+            ));
+        }
+
+        Ok((PlotRegion::YAxisGutter, elements))
+    }
+}
+
+impl Scale for ScalePositionDiscrete {
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
+        if v.is_empty() {
+            return Err(GglangError::Render {
+                message: "ScalePositionDiscrete requires non-empty input".to_string(),
+            });
+        }
+        for s in Self::raw_to_strings(v) {
+            if !self.categories.contains(&s) {
+                self.categories.push(s);
+            }
+        }
+        Ok(())
+    }
+
+    fn fit(&mut self) -> Result<(), GglangError> {
+        Ok(())
+    }
+
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
+        let strings = Self::raw_to_strings(v);
+        let positions: Result<Vec<Unit>, GglangError> = strings
+            .iter()
+            .map(|s| {
+                self.categories
+                    .iter()
+                    .position(|c| c == s)
+                    .map(|idx| Unit::NDC(self.category_ndc(idx)))
+                    .ok_or_else(|| GglangError::Render {
+                        message: format!("Category '{}' not found in discrete scale", s),
+                    })
+            })
+            .collect();
+        Ok(MappedColumn::UnitArray(positions?))
+    }
+
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        match self.axis {
+            Axis::X => self.render_x_axis_discrete(theme),
+            Axis::Y => self.render_y_axis_discrete(theme),
+        }
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        match self.axis {
+            Axis::X => AestheticFamily::HorizontalPosition,
+            Axis::Y => AestheticFamily::VerticalPosition,
+        }
+    }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScalePositionDiscrete::new(self.axis))
+    }
+}
+
 /// A stat transform applied before rendering a geometry.
 pub trait StatTransform {
     /// Transform aesthetic-keyed data before plotting a geometry
@@ -442,10 +604,24 @@ impl StatTransform for IdentityTransform {
 impl PositionAdjustment for IdentityTransform {}
 
 /// Return the default scale for a given aesthetic, if one exists.
-pub fn default_scale_for(aesthetic: &Aesthetic) -> Option<Box<dyn Scale>> {
+/// `data_hint` is the raw column that will be mapped, used to auto-detect discrete vs continuous.
+pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -> Option<Box<dyn Scale>> {
+    let is_string = matches!(data_hint, Some(RawColumn::StringArray(_)));
     match aesthetic {
-        Aesthetic::X => Some(Box::new(ScalePositionContinuous::new(Axis::X))),
-        Aesthetic::Y => Some(Box::new(ScalePositionContinuous::new(Axis::Y))),
+        Aesthetic::X => {
+            if is_string {
+                Some(Box::new(ScalePositionDiscrete::new(Axis::X)))
+            } else {
+                Some(Box::new(ScalePositionContinuous::new(Axis::X)))
+            }
+        }
+        Aesthetic::Y => {
+            if is_string {
+                Some(Box::new(ScalePositionDiscrete::new(Axis::Y)))
+            } else {
+                Some(Box::new(ScalePositionContinuous::new(Axis::Y)))
+            }
+        }
         Aesthetic::Color => Some(Box::new(ScaleColorDiscrete::new())),
         Aesthetic::Group => None,
     }
@@ -522,5 +698,88 @@ mod test {
         let mut scale = ScaleColorDiscrete::new();
         let input = RawColumn::FloatArray(vec![1.0, 2.0]);
         assert!(scale.append(&input).is_err());
+    }
+
+    #[test]
+    fn scale_position_discrete_round_trip() {
+        let mut scale = ScalePositionDiscrete::new(Axis::X);
+        let input = RawColumn::StringArray(vec!["a".into(), "b".into(), "c".into(), "a".into()]);
+        scale.append(&input).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&input).unwrap();
+        match mapped {
+            MappedColumn::UnitArray(units) => {
+                assert_eq!(units.len(), 4);
+                // "a" at index 0 and 3 should map to the same NDC
+                assert_eq!(units[0], units[3]);
+                // different categories map to different positions
+                assert_ne!(units[0], units[1]);
+                assert_ne!(units[1], units[2]);
+            }
+            _ => panic!("Expected UnitArray"),
+        }
+    }
+
+    #[test]
+    fn scale_position_discrete_preserves_insertion_order() {
+        let mut scale = ScalePositionDiscrete::new(Axis::X);
+        let input = RawColumn::StringArray(vec!["banana".into(), "apple".into(), "banana".into()]);
+        scale.append(&input).unwrap();
+        scale.fit().unwrap();
+
+        // 2 categories: banana at i=0, apple at i=1
+        // banana NDC = (2*0+1)/2 - 1 = -0.5
+        // apple NDC  = (2*1+1)/2 - 1 =  0.5
+        let mapped = scale.map(&input).unwrap();
+        match mapped {
+            MappedColumn::UnitArray(units) => {
+                assert_eq!(units[0], Unit::NDC(-0.5)); // banana
+                assert_eq!(units[1], Unit::NDC(0.5));  // apple
+                assert_eq!(units[2], Unit::NDC(-0.5)); // banana again
+            }
+            _ => panic!("Expected UnitArray"),
+        }
+    }
+
+    #[test]
+    fn scale_position_discrete_numeric_as_categorical() {
+        let mut scale = ScalePositionDiscrete::new(Axis::X);
+        let input = RawColumn::IntArray(vec![2021, 2022, 2023]);
+        scale.append(&input).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&input).unwrap();
+        match mapped {
+            MappedColumn::UnitArray(units) => {
+                assert_eq!(units.len(), 3);
+                // All different positions
+                assert_ne!(units[0], units[1]);
+                assert_ne!(units[1], units[2]);
+            }
+            _ => panic!("Expected UnitArray"),
+        }
+    }
+
+    #[test]
+    fn scale_position_discrete_band_width() {
+        let mut scale = ScalePositionDiscrete::new(Axis::X);
+        scale.append(&RawColumn::StringArray(vec!["a".into(), "b".into(), "c".into(), "d".into()])).unwrap();
+        scale.fit().unwrap();
+        let bw = scale.band_width();
+        assert!((bw - 0.5).abs() < 1e-6); // 2.0 / 4 = 0.5
+    }
+
+    #[test]
+    fn scale_position_discrete_axis_rendering() {
+        let mut scale = ScalePositionDiscrete::new(Axis::X);
+        scale.append(&RawColumn::StringArray(vec!["cat".into(), "dog".into()])).unwrap();
+        scale.fit().unwrap();
+
+        let theme = crate::theme::Theme::default();
+        let (region, elements) = scale.render(&theme).unwrap();
+        assert_eq!(region, PlotRegion::XAxisGutter);
+        // 1 axis line + 2 ticks + 2 labels = 5 elements
+        assert_eq!(elements.len(), 5);
     }
 }

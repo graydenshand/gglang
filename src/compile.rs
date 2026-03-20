@@ -1,9 +1,9 @@
 use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
-use crate::ast::{AstAesthetic, GeomAttribute, GeometryType, LiteralValue, Program, Statement};
+use crate::ast::{AstAesthetic, GeomAttribute, GeometryType, LiteralValue, Program, ScaleType, Statement};
 use crate::error::GglangError;
 use crate::geom::{GeomLine, GeomPoint};
 use crate::plot::{Blueprint, Layer};
-use crate::scale::{default_scale_for, IdentityTransform};
+use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform};
 use crate::theme::Theme;
 use std::collections::HashMap;
 
@@ -74,6 +74,19 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                     Box::new(IdentityTransform),
                 ));
             }
+            Statement::Scale(ast_aes, scale_type) => {
+                let aes = ast_aesthetic_to_aesthetic(ast_aes);
+                let scale: Box<dyn crate::scale::Scale> = match (aes, scale_type) {
+                    (Aesthetic::X, ScaleType::Continuous) => Box::new(ScalePositionContinuous::new(Axis::X)),
+                    (Aesthetic::X, ScaleType::Discrete) => Box::new(ScalePositionDiscrete::new(Axis::X)),
+                    (Aesthetic::Y, ScaleType::Continuous) => Box::new(ScalePositionContinuous::new(Axis::Y)),
+                    (Aesthetic::Y, ScaleType::Discrete) => Box::new(ScalePositionDiscrete::new(Axis::Y)),
+                    _ => return Err(GglangError::Compile {
+                        message: format!("Unsupported SCALE combination for aesthetic '{}'", aes.name()),
+                    }),
+                };
+                bp = bp.with_scale(scale);
+            }
             Statement::Facet(spec) => {
                 bp = bp.with_facet_spec(spec.clone());
             }
@@ -87,14 +100,8 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     for m in mappings {
         bp = bp.with_mapping(m);
     }
-    for aes in &mapped_aesthetics {
-        let family = aes.family();
-        if !bp.has_scale_for_family(family) {
-            if let Some(scale) = default_scale_for(aes) {
-                bp = bp.with_scale(scale);
-            }
-        }
-    }
+    // Default scale creation is deferred to render() where actual data types are known.
+    // Explicit SCALE statements added above take priority.
 
     Ok(bp)
 }
@@ -165,6 +172,40 @@ mod tests {
             .count();
         assert_eq!(point_count, 3);
         assert_eq!(polyline_count, 1);
+    }
+
+    #[test]
+    fn end_to_end_string_x_auto_detects_discrete() {
+        let source = "MAP x=:category, y=:value\nGEOM POINT";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let mut bp = compile(&program, &theme).unwrap();
+
+        let mut data = PlotData::new();
+        data.insert("category".into(), RawColumn::StringArray(vec!["a".into(), "b".into(), "c".into()]));
+        data.insert("value".into(), RawColumn::FloatArray(vec![1.0, 2.0, 3.0]));
+
+        let output = bp.render(data).unwrap();
+        // Should render without error with discrete X axis
+        let x_gutter = output.regions.get(&RegionKey::shared(PlotRegion::XAxisGutter));
+        assert!(x_gutter.is_some());
+    }
+
+    #[test]
+    fn end_to_end_explicit_scale_x_discrete_on_numeric() {
+        let source = "MAP x=:year, y=:value\nGEOM POINT\nSCALE X DISCRETE";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let mut bp = compile(&program, &theme).unwrap();
+
+        let mut data = PlotData::new();
+        data.insert("year".into(), RawColumn::IntArray(vec![2021, 2022, 2023]));
+        data.insert("value".into(), RawColumn::FloatArray(vec![10.0, 20.0, 30.0]));
+
+        let output = bp.render(data).unwrap();
+        // Explicit SCALE X DISCRETE on numeric column should work
+        let x_gutter = output.regions.get(&RegionKey::shared(PlotRegion::XAxisGutter));
+        assert!(x_gutter.is_some());
     }
 
     #[test]

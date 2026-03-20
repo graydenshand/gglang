@@ -1,0 +1,5 @@
+MAP x=:species, y=:sepal_length
+GEOM POINT
+TITLE "Iris Sepal Length by Species"
+XLABEL "Species"
+YLABEL "Sepal Length"

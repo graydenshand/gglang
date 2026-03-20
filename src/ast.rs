@@ -34,10 +34,17 @@ pub enum FacetSpec {
     },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScaleType {
+    Continuous,
+    Discrete,
+}
+
 #[derive(Debug)]
 pub enum Statement {
     Map(Vec<DataMapping>),
     Geom(GeometryType, Vec<GeomAttribute>),
+    Scale(AstAesthetic, ScaleType),
     Facet(FacetSpec),
     Title(String),
     Caption(String),
@@ -277,6 +284,41 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             }
                         }
                         statements.push(Statement::Geom(geom_type, attrs));
+                    }
+                    Rule::scale_statement => {
+                        let mut inner = stmt_inner.into_inner();
+                        let target = inner
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected scale target in scale_statement".to_string(),
+                            })?
+                            .as_str();
+                        let aes = match target {
+                            "X" => AstAesthetic::X,
+                            "Y" => AstAesthetic::Y,
+                            "COLOR" => AstAesthetic::Color,
+                            other => {
+                                return Err(GglangError::Parse {
+                                    message: format!("Unsupported scale target: {}", other),
+                                })
+                            }
+                        };
+                        let type_str = inner
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected scale type in scale_statement".to_string(),
+                            })?
+                            .as_str();
+                        let scale_type = match type_str {
+                            "CONTINUOUS" => ScaleType::Continuous,
+                            "DISCRETE" => ScaleType::Discrete,
+                            other => {
+                                return Err(GglangError::Parse {
+                                    message: format!("Unsupported scale type: {}", other),
+                                })
+                            }
+                        };
+                        statements.push(Statement::Scale(aes, scale_type));
                     }
                     Rule::facet_statement => {
                         let facet_inner =
@@ -754,6 +796,39 @@ mod tests {
         match &program.statements[0] {
             Statement::Geom(GeometryType::Point, attrs) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Point with no attrs"),
+        }
+    }
+
+    #[test]
+    fn test_parse_scale_x_discrete() {
+        let source = "SCALE X DISCRETE";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Scale(AstAesthetic::X, ScaleType::Discrete) => {}
+            _ => panic!("Expected Scale(X, Discrete)"),
+        }
+    }
+
+    #[test]
+    fn test_parse_scale_y_continuous() {
+        let source = "SCALE Y CONTINUOUS";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Scale(AstAesthetic::Y, ScaleType::Continuous) => {}
+            _ => panic!("Expected Scale(Y, Continuous)"),
+        }
+    }
+
+    #[test]
+    fn test_parse_scale_with_other_statements() {
+        let source = "MAP x=:category, y=:value\nGEOM POINT\nSCALE X DISCRETE";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 3);
+        match &program.statements[2] {
+            Statement::Scale(AstAesthetic::X, ScaleType::Discrete) => {}
+            _ => panic!("Expected Scale statement"),
         }
     }
 }

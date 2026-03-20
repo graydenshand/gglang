@@ -1,0 +1,6 @@
+MAP x=:year, y=:sales
+GEOM POINT
+SCALE X DISCRETE
+TITLE "Sales by Year (Discrete X)"
+XLABEL "Year"
+YLABEL "Sales"
