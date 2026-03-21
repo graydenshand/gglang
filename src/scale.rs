@@ -322,7 +322,9 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> [f32; 3] {
 }
 
 /// A discrete color scale that maps categorical string values to colors.
+/// Used for both Color and Fill aesthetics (parameterized by `family`).
 pub struct ScaleColorDiscrete {
+    family: AestheticFamily,
     categories: Vec<String>,
     palette: Vec<[f32; 3]>,
 }
@@ -330,6 +332,15 @@ pub struct ScaleColorDiscrete {
 impl ScaleColorDiscrete {
     pub fn new() -> Self {
         Self {
+            family: AestheticFamily::Color,
+            categories: vec![],
+            palette: vec![],
+        }
+    }
+
+    pub fn new_fill() -> Self {
+        Self {
+            family: AestheticFamily::Fill,
             categories: vec![],
             palette: vec![],
         }
@@ -416,11 +427,15 @@ impl Scale for ScaleColorDiscrete {
     }
 
     fn aesthetic_family(&self) -> AestheticFamily {
-        AestheticFamily::Color
+        self.family
     }
 
     fn clone_unfitted(&self) -> Box<dyn Scale> {
-        Box::new(ScaleColorDiscrete::new())
+        Box::new(ScaleColorDiscrete {
+            family: self.family,
+            categories: vec![],
+            palette: vec![],
+        })
     }
 }
 
@@ -603,6 +618,59 @@ impl StatTransform for IdentityTransform {
 }
 impl PositionAdjustment for IdentityTransform {}
 
+/// Statistical transform that counts occurrences of each x category.
+/// If a fill aesthetic is present, counts per (x, fill) group.
+pub struct StatCount;
+impl StatTransform for StatCount {
+    fn transform(&self, data: &AesData) -> AesData {
+        let x_col = match data.get(Aesthetic::X) {
+            Some(col) => col,
+            None => return data.clone(),
+        };
+        let x_strings = match x_col {
+            RawColumn::StringArray(s) => s.clone(),
+            RawColumn::IntArray(v) => v.iter().map(|i| i.to_string()).collect(),
+            RawColumn::FloatArray(v) => v.iter().map(|f| f.to_string()).collect(),
+        };
+
+        let mut result = AesData::new();
+
+        if let Some(RawColumn::StringArray(fill_vals)) = data.get(Aesthetic::Fill) {
+            // Group by (x, fill), preserving order
+            let mut groups: Vec<(String, String, usize)> = vec![];
+            for (x, f) in x_strings.iter().zip(fill_vals.iter()) {
+                if let Some(entry) = groups.iter_mut().find(|(gx, gf, _)| gx == x && gf == f) {
+                    entry.2 += 1;
+                } else {
+                    groups.push((x.clone(), f.clone(), 1));
+                }
+            }
+            let out_x: Vec<String> = groups.iter().map(|(x, _, _)| x.clone()).collect();
+            let out_y: Vec<f64> = groups.iter().map(|(_, _, c)| *c as f64).collect();
+            let out_fill: Vec<String> = groups.iter().map(|(_, f, _)| f.clone()).collect();
+            result.insert(Aesthetic::X, RawColumn::StringArray(out_x));
+            result.insert(Aesthetic::Y, RawColumn::FloatArray(out_y));
+            result.insert(Aesthetic::Fill, RawColumn::StringArray(out_fill));
+        } else {
+            // Group by x only
+            let mut groups: Vec<(String, usize)> = vec![];
+            for x in &x_strings {
+                if let Some(entry) = groups.iter_mut().find(|(gx, _)| gx == x) {
+                    entry.1 += 1;
+                } else {
+                    groups.push((x.clone(), 1));
+                }
+            }
+            let out_x: Vec<String> = groups.iter().map(|(x, _)| x.clone()).collect();
+            let out_y: Vec<f64> = groups.iter().map(|(_, c)| *c as f64).collect();
+            result.insert(Aesthetic::X, RawColumn::StringArray(out_x));
+            result.insert(Aesthetic::Y, RawColumn::FloatArray(out_y));
+        }
+
+        result
+    }
+}
+
 /// Return the default scale for a given aesthetic, if one exists.
 /// `data_hint` is the raw column that will be mapped, used to auto-detect discrete vs continuous.
 pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -> Option<Box<dyn Scale>> {
@@ -623,6 +691,7 @@ pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -
             }
         }
         Aesthetic::Color => Some(Box::new(ScaleColorDiscrete::new())),
+        Aesthetic::Fill => Some(Box::new(ScaleColorDiscrete::new_fill())),
         Aesthetic::Group => None,
     }
 }
@@ -768,6 +837,64 @@ mod test {
         scale.fit().unwrap();
         let bw = scale.band_width();
         assert!((bw - 0.5).abs() < 1e-6); // 2.0 / 4 = 0.5
+    }
+
+    #[test]
+    fn stat_count_groups_by_x() {
+        let mut data = AesData::new();
+        data.insert(
+            Aesthetic::X,
+            RawColumn::StringArray(vec!["a".into(), "b".into(), "a".into(), "c".into()]),
+        );
+        let result = StatCount.transform(&data);
+        match result.get(Aesthetic::X).unwrap() {
+            RawColumn::StringArray(xs) => assert_eq!(xs, &["a", "b", "c"]),
+            _ => panic!("Expected StringArray"),
+        }
+        match result.get(Aesthetic::Y).unwrap() {
+            RawColumn::FloatArray(ys) => assert_eq!(ys, &[2.0, 1.0, 1.0]),
+            _ => panic!("Expected FloatArray"),
+        }
+    }
+
+    #[test]
+    fn stat_count_groups_by_x_and_fill() {
+        let mut data = AesData::new();
+        data.insert(
+            Aesthetic::X,
+            RawColumn::StringArray(vec![
+                "a".into(), "a".into(), "b".into(), "b".into(),
+            ]),
+        );
+        data.insert(
+            Aesthetic::Fill,
+            RawColumn::StringArray(vec![
+                "g1".into(), "g2".into(), "g1".into(), "g2".into(),
+            ]),
+        );
+        let result = StatCount.transform(&data);
+        match result.get(Aesthetic::X).unwrap() {
+            RawColumn::StringArray(xs) => assert_eq!(xs, &["a", "a", "b", "b"]),
+            _ => panic!("Expected StringArray"),
+        }
+        match result.get(Aesthetic::Y).unwrap() {
+            RawColumn::FloatArray(ys) => assert_eq!(ys, &[1.0, 1.0, 1.0, 1.0]),
+            _ => panic!("Expected FloatArray"),
+        }
+        match result.get(Aesthetic::Fill).unwrap() {
+            RawColumn::StringArray(fs) => assert_eq!(fs, &["g1", "g2", "g1", "g2"]),
+            _ => panic!("Expected StringArray"),
+        }
+    }
+
+    #[test]
+    fn stat_count_no_x_returns_data_unchanged() {
+        let mut data = AesData::new();
+        data.insert(Aesthetic::Y, RawColumn::FloatArray(vec![1.0, 2.0]));
+        let result = StatCount.transform(&data);
+        // Should return data unchanged when X is missing
+        assert!(result.get(Aesthetic::Y).is_some());
+        assert!(result.get(Aesthetic::X).is_none());
     }
 
     #[test]

@@ -16,7 +16,7 @@ statement = {
 
 // Scale Statement
 scale_statement = { "SCALE" ~ scale_target ~ scale_type }
-scale_target    = { "X" | "Y" | "COLOR" }
+scale_target    = { "X" | "Y" | "COLOR" | "FILL" }
 scale_type      = { "CONTINUOUS" | "DISCRETE" }
 
 // Title Statement
@@ -35,15 +35,16 @@ ylabel_statement = { "YLABEL" ~ string_literal }
 map_statement = { "MAP" ~ data_mappings }
 data_mappings = { data_mapping ~ ("," ~ data_mapping)* }
 data_mapping = { aesthetic ~ "=" ~ data_reference }
-aesthetic = { "x" | "y" | "color" | "group" }
+aesthetic = { "x" | "y" | "color" | "fill" | "group" }
 data_reference = { ":" ~ identifier }
 
 // Geometry Statement
-geom_statement = { "GEOM" ~ geometry_type ~ geom_attributes? }
+geom_statement = { "GEOM" ~ geometry_type ~ geom_attributes? ~ position_adjustment? }
+position_adjustment = { "STACK" | "DODGE" }
 geom_attributes = { "{" ~ geom_attribute ~ ("," ~ geom_attribute)* ~ "}" }
 geom_attribute = { aesthetic ~ "=" ~ attribute_value }
 attribute_value = { data_reference | string_literal | number }
-geometry_type = { "POINT" | "LINE" }
+geometry_type = { "POINT" | "LINE" | "BAR" }
 
 // Facet Statement
 facet_statement = { "FACET" ~ (facet_wrap | facet_grid) }

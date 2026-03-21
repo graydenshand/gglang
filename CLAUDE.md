@@ -24,7 +24,7 @@ Goals:
 
 The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu (interactive window) or exported to SVG/PNG (headless). All public API functions return `Result<_, GglangError>` with structured error types via `thiserror`.
 
-Supported features: `GeomPoint` and `GeomLine` with X/Y continuous scales, `group` aesthetic for partitioning line series, color segmentation via `ScaleColorDiscrete` (categorical string column → HSL-spaced colors with legend), axis tick marks/labels, plot titles/captions/axis labels. Faceting supports two modes: `FACET WRAP :var` (wraps panels into an auto-sized grid, one variable, configurable columns) and `FACET GRID ROWS :r COLS :c` (strict rows×cols matrix from one or two variables, with col labels top, row labels right). Both modes support scale freedom controls: `SCALES FREE/FREE X/FREE Y/FIXED`. Free scales in wrap mode are per-panel; in grid mode, free X scales are shared per column and free Y scales are shared per row. The `Scale` trait has `clone_unfitted()` for creating blank scale copies used by free-scale rendering.
+Supported features: `GeomPoint`, `GeomLine`, and `GeomBar` with X/Y continuous and discrete scales, `group` aesthetic for partitioning line series, `fill` aesthetic for bar interior color (separate from `color` border), color/fill segmentation via `ScaleColorDiscrete` (parameterized for both Color and Fill families, categorical string column → HSL-spaced colors with legend), `StatCount` for automatic frequency counting when Y is unmapped, position adjustments (`STACK`/`DODGE`) for bar grouping, axis tick marks/labels, plot titles/captions/axis labels. Faceting supports two modes: `FACET WRAP :var` (wraps panels into an auto-sized grid, one variable, configurable columns) and `FACET GRID ROWS :r COLS :c` (strict rows×cols matrix from one or two variables, with col labels top, row labels right). Both modes support scale freedom controls: `SCALES FREE/FREE X/FREE Y/FIXED`. Free scales in wrap mode are per-panel; in grid mode, free X scales are shared per column and free Y scales are shared per row. The `Scale` trait has `clone_unfitted()` for creating blank scale copies used by free-scale rendering.
 
 CSV loading auto-detects numeric vs. string columns. A tree-based layout system gives each plot region (data area, axis gutters, title, legend, caption, facet labels, facet col/row labels) its own `WindowSegment`. `RegionKey` (compound `PlotRegion` + optional panel index) enables both single-plot and faceted layouts through the same rendering pipeline. The GPU rendering backend uses three separate pipelines: a general pipeline for rectangles/axes/ticks, an instanced SDF pipeline for anti-aliased points, and a miter-join tessellated pipeline for polylines. A view transform uniform (currently identity) unblocks future pan/zoom. The domain modules (`plot.rs`, `aesthetic.rs`, `column.rs`, `geom.rs`, `scale.rs`, `shape.rs`, `layout.rs`) are fully backend-agnostic — all wgpu/winit types are confined to `frame.rs` and `app.rs`, and SVG/PNG export consumes the same `PlotOutput` without any GPU dependency.
 
@@ -41,8 +41,8 @@ CSV loading auto-detects numeric vs. string columns. A tree-based layout system 
 | `src/error.rs` | `GglangError` enum (`Parse`, `Compile`, `Data`, `Render`, `Export`) via `thiserror` |
 | `src/aesthetic.rs` | `Aesthetic` enum, `AestheticFamily` enum, `Mapping` struct, `ConstantValue`, `parse_hex_color()` |
 | `src/column.rs` | `RawColumn` (input), `MappedColumn` (output), `AesData`, `ResolvedData` — data pipeline types |
-| `src/geom.rs` | `Geometry` trait, `GeomPoint`, `GeomLine` — layer rendering implementations |
-| `src/scale.rs` | `Scale` trait, `ScalePositionContinuous`, `ScaleColorDiscrete`, `StatTransform`, `default_scale_for()` |
+| `src/geom.rs` | `Geometry` trait, `GeomPoint`, `GeomLine`, `GeomBar` — layer rendering implementations |
+| `src/scale.rs` | `Scale` trait, `ScalePositionContinuous`, `ScalePositionDiscrete`, `ScaleColorDiscrete`, `StatTransform`, `StatCount`, `default_scale_for()` |
 | `src/plot.rs` | `Blueprint` (builder + render orchestration), `Layer`, `PlotData`, `FacetSpec` |
 | `src/shape.rs` | Domain-level render primitives: `Rectangle`, `Text`, `PolylineData`, `PointData`, `Element` enum. Backend-agnostic |
 | `src/layout.rs` | Layout system: `Unit`, `WindowSegment` (with `slice_x`/`slice_y`, `px_x`/`px_y`), `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`, `PlotOutput`. Backend-agnostic |
@@ -101,6 +101,14 @@ GEOM POINT
 MAP x=:day, y=:price, group=:ticker, color=:ticker
 GEOM LINE                          // timeseries line plot
 
+MAP x=:category
+GEOM BAR                           // count bar chart (stat=count, auto Y)
+
+MAP x=:year, y=:sales, fill=:region
+GEOM BAR                           // stacked bar chart (default position=stack)
+GEOM BAR DODGE                     // dodged bar chart
+GEOM BAR STACK                     // explicit stack (same as default)
+
 SCALE X CONTINUOUS                             // explicit continuous X (default for numeric)
 SCALE X DISCRETE                              // force categorical X (auto-detected for string columns)
 SCALE Y DISCRETE                              // force categorical Y
@@ -118,7 +126,7 @@ FACET WRAP :store SCALES FIXED                 // both shared (default)
 TITLE "My plot"
 ```
 
-Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. `SCALE X/Y CONTINUOUS/DISCRETE` overrides auto-detected scale types — string columns auto-select `DISCRETE`, numeric columns auto-select `CONTINUOUS`. Faceting splits data into panels; `WRAP` auto-grids one variable, `GRID` creates a strict rows×cols matrix from one or two variables. `SCALES` controls axis sharing (`FREE`/`FREE X`/`FREE Y`/`FIXED`).
+Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. `SCALE X/Y CONTINUOUS/DISCRETE` overrides auto-detected scale types — string columns auto-select `DISCRETE`, numeric columns auto-select `CONTINUOUS`. `GEOM BAR` supports optional position adjustment (`STACK`/`DODGE`) after attributes: `GEOM BAR { fill=:region } DODGE`. If Y is not mapped, `StatCount` automatically counts occurrences per x category. Faceting splits data into panels; `WRAP` auto-grids one variable, `GRID` creates a strict rows×cols matrix from one or two variables. `SCALES` controls axis sharing (`FREE`/`FREE X`/`FREE Y`/`FIXED`).
 
 ## Key architectural decisions
 
@@ -126,15 +134,18 @@ Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; g
 - **`Element` enum** (`Rect | Point | Polyline | Text`) unifies geometry at the render boundary. All variants carry domain-level data (positions in `Unit` coords); `Frame` converts them to GPU-specific formats, `render_svg()` converts to SVG elements.
 - **`Mapping` is a struct** `{ aesthetic: Aesthetic, variable: String }` — extensible to any aesthetic channel. `Aesthetic` and `AestheticFamily` are enums, not traits.
 - **Split data pipeline types**: `RawColumn` (input: `FloatArray`/`IntArray`/`StringArray`) and `MappedColumn` (output: `UnitArray`/`ColorArray`). `AesData` (`HashMap<Aesthetic, RawColumn>`) is produced by the column-rename step; `ResolvedData` (`mapped: HashMap<Aesthetic, MappedColumn>`, `raw: HashMap<Aesthetic, RawColumn>`) is produced by bulk scale mapping and passed to `Geometry::render()`. `PlotData` (`HashMap<String, RawColumn>`) remains the CSV boundary type. `Scale::map()` takes `&RawColumn → Result<MappedColumn>`, eliminating in-geom scale lookups.
+- **Fill vs Color aesthetics**: `Fill` controls interior color (bars), `Color` controls border/stroke. `ScaleColorDiscrete` is parameterized with an `AestheticFamily` field to serve both `Color` and `Fill` families. `default_scale_for(Aesthetic::Fill)` returns a fill-flavored instance.
+- **StatCount transform**: When `GeomBar` has no Y mapping, the compiler assigns `StatCount` which groups by X (and optionally Fill) to produce frequency counts. `GeomBar::update_scales()` creates a Y continuous scale if none exists after stat transform, and feeds cumulative stacked totals to ensure the Y domain covers full stack height.
+- **Position adjustments**: `BarPosition` enum (`Stack`/`Dodge`) on `GeomBar`. Grammar: `GEOM BAR DODGE`. Stacking computes NDC offsets using `ndc_per_unit` (slope of the linear Y scale mapping) to stack segments correctly in NDC space.
 - **Faceting uses `FacetSpec` enum** (`Wrap { variable, columns, scales }` | `Grid { row_var, col_var, scales }`), stored as `Option<FacetSpec>` on Blueprint. `ScaleFreedom` enum (`Fixed | FreeX | FreeY | Free`) controls axis sharing. `Scale::clone_unfitted()` creates blank copies for per-panel or per-row/column scale instances.
 - **SVG/PNG exporters are backend-agnostic** — they consume the same `PlotOutput` as the GPU renderer and use `WindowSegment::px_*()` methods for coordinate conversion. PNG export works by rendering to SVG first, then rasterizing via `resvg`.
 
 ## Issues and project planning
 
 Open issues in `proj/issues/`:
-- `issue-error-handling.md` — In progress (basic `GglangError` infrastructure in place, further refinement ongoing)
-- `issue-scale-position-discrete.md` — Not started (required for bar charts / `GeomBar`)
-- `issue-scale-log.md` — Not started (log scale support)
+- `snapshot_testing.md` — SVG-based regression testing framework
+
+Active work tracked in `proj/roadmap.md`. Stories in `proj/stories/`.
 
 Active work tracked in `proj/backlog.md`. Design notes and language examples in `docs/` and `proj/ideas/`.
 

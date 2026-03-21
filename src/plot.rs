@@ -174,9 +174,10 @@ impl<'a> Blueprint<'a> {
                 if let Some(scale) = scales.iter().find(|s| s.aesthetic_family() == family) {
                     let mapped_col = scale.map(col)?;
                     resolved.mapped.insert(*aes, mapped_col);
-                } else {
-                    resolved.raw.insert(*aes, col.clone());
                 }
+                // Always preserve raw data — geoms like GeomBar need raw values
+                // for stacking even when the aesthetic has been mapped through a scale
+                resolved.raw.insert(*aes, col.clone());
             }
         }
         let data_len = layer_aes
@@ -373,7 +374,7 @@ impl<'a> Blueprint<'a> {
                 let has_legend = self
                     .scales
                     .iter()
-                    .any(|s| s.aesthetic_family() == AestheticFamily::Color);
+                    .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill));
                 let layout = match &spec {
                     FacetSpec::Wrap { variable, columns, scales } => {
                         let facet_col = raw_data.get(variable).ok_or_else(|| GglangError::Render {
@@ -449,7 +450,7 @@ impl<'a> Blueprint<'a> {
                 let has_legend = self
                     .scales
                     .iter()
-                    .any(|s| s.aesthetic_family() == AestheticFamily::Color);
+                    .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill));
                 let layout = standard_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme);
 
                 Ok(PlotOutput { regions, layout })

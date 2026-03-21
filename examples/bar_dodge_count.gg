@@ -1,0 +1,4 @@
+MAP x=:year, fill=:region
+GEOM BAR DODGE
+SCALE X DISCRETE
+TITLE "Count by Year and Region (Dodged)"

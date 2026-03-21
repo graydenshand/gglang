@@ -1,0 +1,4 @@
+MAP x=:year, y=:sales, fill=:region
+GEOM BAR
+SCALE X DISCRETE
+TITLE "Sales by Region (Stacked)"

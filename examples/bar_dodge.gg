@@ -1,0 +1,4 @@
+MAP x=:year, y=:sales, fill=:region
+GEOM BAR DODGE
+SCALE X DISCRETE
+TITLE "Sales by Region (Dodged)"

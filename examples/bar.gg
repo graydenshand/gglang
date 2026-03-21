@@ -1,0 +1,3 @@
+MAP x=:region
+GEOM BAR
+TITLE "Region Count"

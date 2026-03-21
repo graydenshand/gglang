@@ -4,6 +4,7 @@ pub enum Aesthetic {
     X,
     Y,
     Color,
+    Fill,
     Group,
 }
 
@@ -13,6 +14,7 @@ impl Aesthetic {
             Aesthetic::X,
             Aesthetic::Y,
             Aesthetic::Color,
+            Aesthetic::Fill,
             Aesthetic::Group,
         ]
     }
@@ -22,6 +24,7 @@ impl Aesthetic {
             Aesthetic::X => AestheticFamily::HorizontalPosition,
             Aesthetic::Y => AestheticFamily::VerticalPosition,
             Aesthetic::Color => AestheticFamily::Color,
+            Aesthetic::Fill => AestheticFamily::Fill,
             Aesthetic::Group => AestheticFamily::Group,
         }
     }
@@ -31,6 +34,7 @@ impl Aesthetic {
             Aesthetic::X => "x",
             Aesthetic::Y => "y",
             Aesthetic::Color => "color",
+            Aesthetic::Fill => "fill",
             Aesthetic::Group => "group",
         }
     }
@@ -42,6 +46,7 @@ pub enum AestheticFamily {
     HorizontalPosition,
     VerticalPosition,
     Color,
+    Fill,
     Group,
 }
 

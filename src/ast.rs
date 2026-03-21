@@ -43,7 +43,7 @@ pub enum ScaleType {
 #[derive(Debug)]
 pub enum Statement {
     Map(Vec<DataMapping>),
-    Geom(GeometryType, Vec<GeomAttribute>),
+    Geom(GeometryType, Vec<GeomAttribute>, Option<PositionAdjustment>),
     Scale(AstAesthetic, ScaleType),
     Facet(FacetSpec),
     Title(String),
@@ -75,6 +75,7 @@ pub enum AstAesthetic {
     X,
     Y,
     Color,
+    Fill,
     Group,
 }
 
@@ -82,6 +83,13 @@ pub enum AstAesthetic {
 pub enum GeometryType {
     Point,
     Line,
+    Bar,
+}
+
+#[derive(Debug, Clone)]
+pub enum PositionAdjustment {
+    Stack,
+    Dodge,
 }
 
 fn parse_data_reference(pair: pest::iterators::Pair<Rule>) -> Result<String, GglangError> {
@@ -169,6 +177,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "x" => AstAesthetic::X,
                                             "y" => AstAesthetic::Y,
                                             "color" => AstAesthetic::Color,
+                                            "fill" => AstAesthetic::Fill,
                                             "group" => AstAesthetic::Group,
                                             other => {
                                                 return Err(GglangError::Parse {
@@ -195,6 +204,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                         let geom_type = match geom_type_pair.as_str() {
                             "POINT" => GeometryType::Point,
                             "LINE" => GeometryType::Line,
+                            "BAR" => GeometryType::Bar,
                             other => {
                                 return Err(GglangError::Parse {
                                     message: format!("Unsupported geometry: {}", other),
@@ -202,8 +212,15 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             }
                         };
                         let mut attrs = vec![];
+                        let mut position = None;
                         for pair in inner {
-                            if pair.as_rule() == Rule::geom_attributes {
+                            if pair.as_rule() == Rule::position_adjustment {
+                                position = Some(match pair.as_str() {
+                                    "STACK" => PositionAdjustment::Stack,
+                                    "DODGE" => PositionAdjustment::Dodge,
+                                    _ => unreachable!(),
+                                });
+                            } else if pair.as_rule() == Rule::geom_attributes {
                                 for attr_pair in pair.into_inner() {
                                     if attr_pair.as_rule() == Rule::geom_attribute {
                                         let mut attr_inner = attr_pair.into_inner();
@@ -218,6 +235,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "x" => AstAesthetic::X,
                                             "y" => AstAesthetic::Y,
                                             "color" => AstAesthetic::Color,
+                                            "fill" => AstAesthetic::Fill,
                                             "group" => AstAesthetic::Group,
                                             other => {
                                                 return Err(GglangError::Parse {
@@ -283,7 +301,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                 }
                             }
                         }
-                        statements.push(Statement::Geom(geom_type, attrs));
+                        statements.push(Statement::Geom(geom_type, attrs, position));
                     }
                     Rule::scale_statement => {
                         let mut inner = stmt_inner.into_inner();
@@ -297,6 +315,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             "X" => AstAesthetic::X,
                             "Y" => AstAesthetic::Y,
                             "COLOR" => AstAesthetic::Color,
+                            "FILL" => AstAesthetic::Fill,
                             other => {
                                 return Err(GglangError::Parse {
                                     message: format!("Unsupported scale target: {}", other),
@@ -493,7 +512,7 @@ mod tests {
         }
 
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs) => assert!(attrs.is_empty()),
+            Statement::Geom(GeometryType::Point, attrs, _) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Point statement"),
         }
     }
@@ -534,7 +553,7 @@ mod tests {
         }
 
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Line, attrs) => assert!(attrs.is_empty()),
+            Statement::Geom(GeometryType::Line, attrs, _) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Line statement"),
         }
     }
@@ -569,7 +588,7 @@ mod tests {
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 2);
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs) => {
+            Statement::Geom(GeometryType::Point, attrs, _) => {
                 assert_eq!(attrs.len(), 1);
                 match &attrs[0] {
                     GeomAttribute::Constant(AstAesthetic::Color, LiteralValue::Str(s)) => {
@@ -588,7 +607,7 @@ mod tests {
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 2);
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs) => {
+            Statement::Geom(GeometryType::Point, attrs, _) => {
                 assert_eq!(attrs.len(), 1);
                 match &attrs[0] {
                     GeomAttribute::Mapped(AstAesthetic::Y, col) => {
@@ -606,7 +625,7 @@ mod tests {
         let source = "GEOM LINE { y=:revenue, color=\"#0000FF\" }";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Line, attrs) => {
+            Statement::Geom(GeometryType::Line, attrs, _) => {
                 assert_eq!(attrs.len(), 2);
             }
             _ => panic!("Expected Geom Line"),
@@ -794,7 +813,7 @@ mod tests {
         let source = "GEOM POINT";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Point, attrs) => assert!(attrs.is_empty()),
+            Statement::Geom(GeometryType::Point, attrs, _) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Point with no attrs"),
         }
     }
@@ -829,6 +848,84 @@ mod tests {
         match &program.statements[2] {
             Statement::Scale(AstAesthetic::X, ScaleType::Discrete) => {}
             _ => panic!("Expected Scale statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_geom_bar() {
+        let source = "MAP x=:category\nGEOM BAR";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 2);
+        match &program.statements[1] {
+            Statement::Geom(GeometryType::Bar, attrs, pos) => {
+                assert!(attrs.is_empty());
+                assert!(pos.is_none());
+            }
+            _ => panic!("Expected Geom Bar statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_geom_bar_dodge() {
+        let source = "GEOM BAR DODGE";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Geom(GeometryType::Bar, _, pos) => {
+                assert!(matches!(pos, Some(PositionAdjustment::Dodge)));
+            }
+            _ => panic!("Expected Geom Bar with Dodge"),
+        }
+    }
+
+    #[test]
+    fn test_parse_geom_bar_stack() {
+        let source = "GEOM BAR STACK";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Geom(GeometryType::Bar, _, pos) => {
+                assert!(matches!(pos, Some(PositionAdjustment::Stack)));
+            }
+            _ => panic!("Expected Geom Bar with Stack"),
+        }
+    }
+
+    #[test]
+    fn test_parse_geom_bar_with_attributes_and_dodge() {
+        let source = "GEOM BAR { fill=:region } DODGE";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Geom(GeometryType::Bar, attrs, pos) => {
+                assert_eq!(attrs.len(), 1);
+                assert!(matches!(&attrs[0], GeomAttribute::Mapped(AstAesthetic::Fill, _)));
+                assert!(matches!(pos, Some(PositionAdjustment::Dodge)));
+            }
+            _ => panic!("Expected Geom Bar with attrs and Dodge"),
+        }
+    }
+
+    #[test]
+    fn test_parse_fill_aesthetic() {
+        let source = "MAP x=:year, y=:sales, fill=:region\nGEOM BAR";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Map(mappings) => {
+                assert_eq!(mappings.len(), 3);
+                assert!(matches!(mappings[2].aesthetic, AstAesthetic::Fill));
+                assert_eq!(mappings[2].column, "region");
+            }
+            _ => panic!("Expected Map statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_point_no_position_adjustment() {
+        let source = "GEOM POINT";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Geom(GeometryType::Point, _, pos) => {
+                assert!(pos.is_none());
+            }
+            _ => panic!("Expected Geom Point"),
         }
     }
 }

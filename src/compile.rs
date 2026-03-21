@@ -1,9 +1,9 @@
 use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
-use crate::ast::{AstAesthetic, GeomAttribute, GeometryType, LiteralValue, Program, ScaleType, Statement};
+use crate::ast::{AstAesthetic, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement};
 use crate::error::GglangError;
-use crate::geom::{GeomLine, GeomPoint};
+use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint};
 use crate::plot::{Blueprint, Layer};
-use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform};
+use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
 use crate::theme::Theme;
 use std::collections::HashMap;
 
@@ -12,6 +12,7 @@ fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
         AstAesthetic::X => Aesthetic::X,
         AstAesthetic::Y => Aesthetic::Y,
         AstAesthetic::Color => Aesthetic::Color,
+        AstAesthetic::Fill => Aesthetic::Fill,
         AstAesthetic::Group => Aesthetic::Group,
     }
 }
@@ -33,7 +34,7 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                     });
                 }
             }
-            Statement::Geom(geom_type, geom_attrs) => {
+            Statement::Geom(geom_type, geom_attrs, position) => {
                 let mut layer_mappings: Vec<Mapping> = vec![];
                 let mut layer_constants: HashMap<Aesthetic, ConstantValue> = HashMap::new();
                 for attr in geom_attrs {
@@ -62,15 +63,35 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                         }
                     }
                 }
-                let geom: Box<dyn crate::geom::Geometry> = match geom_type {
-                    GeometryType::Point => Box::new(GeomPoint),
-                    GeometryType::Line => Box::new(GeomLine),
+                if position.is_some() && !matches!(geom_type, GeometryType::Bar) {
+                    return Err(GglangError::Compile {
+                        message: "Position adjustment (STACK/DODGE) is only supported on GEOM BAR".to_string(),
+                    });
+                }
+                let (geom, stat): (Box<dyn crate::geom::Geometry>, Box<dyn crate::scale::StatTransform>) = match geom_type {
+                    GeometryType::Point => (Box::new(GeomPoint), Box::new(IdentityTransform)),
+                    GeometryType::Line => (Box::new(GeomLine), Box::new(IdentityTransform)),
+                    GeometryType::Bar => {
+                        let bar_position = match position {
+                            Some(PositionAdjustment::Dodge) => BarPosition::Dodge,
+                            _ => BarPosition::Stack,
+                        };
+                        // If y is not mapped (neither in global mappings nor layer), use StatCount
+                        let has_y = mapped_aesthetics.contains(&Aesthetic::Y)
+                            || layer_mappings.iter().any(|m| m.aesthetic == Aesthetic::Y);
+                        let stat: Box<dyn crate::scale::StatTransform> = if has_y {
+                            Box::new(IdentityTransform)
+                        } else {
+                            Box::new(StatCount)
+                        };
+                        (Box::new(GeomBar { position: bar_position }), stat)
+                    }
                 };
                 bp = bp.with_layer(Layer::new(
                     geom,
                     layer_mappings,
                     layer_constants,
-                    Box::new(IdentityTransform),
+                    stat,
                     Box::new(IdentityTransform),
                 ));
             }
@@ -225,5 +246,129 @@ mod tests {
             .get(&RegionKey::shared(PlotRegion::DataArea))
             .map_or(0, |v| v.len());
         assert!(data_count >= 2);
+    }
+
+    #[test]
+    fn end_to_end_bar_count() {
+        let source = "MAP x=:category\nGEOM BAR";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let mut bp = compile(&program, &theme).unwrap();
+
+        let mut data = PlotData::new();
+        data.insert(
+            "category".into(),
+            RawColumn::StringArray(vec!["a".into(), "b".into(), "a".into(), "c".into()]),
+        );
+
+        let output = bp.render(data).unwrap();
+        let bars: Vec<_> = output
+            .regions
+            .get(&RegionKey::shared(PlotRegion::DataArea))
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, Element::Rect(_)))
+            .collect();
+        // 3 distinct categories → 3 bars
+        assert_eq!(bars.len(), 3);
+    }
+
+    #[test]
+    fn end_to_end_bar_identity() {
+        let source = "MAP x=:category, y=:value\nGEOM BAR";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let mut bp = compile(&program, &theme).unwrap();
+
+        let mut data = PlotData::new();
+        data.insert(
+            "category".into(),
+            RawColumn::StringArray(vec!["a".into(), "b".into(), "c".into()]),
+        );
+        data.insert("value".into(), RawColumn::FloatArray(vec![10.0, 20.0, 30.0]));
+
+        let output = bp.render(data).unwrap();
+        let bars: Vec<_> = output
+            .regions
+            .get(&RegionKey::shared(PlotRegion::DataArea))
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, Element::Rect(_)))
+            .collect();
+        assert_eq!(bars.len(), 3);
+    }
+
+    #[test]
+    fn end_to_end_bar_dodge_with_fill() {
+        let source = "MAP x=:x, y=:y, fill=:g\nGEOM BAR DODGE\nSCALE X DISCRETE";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let mut bp = compile(&program, &theme).unwrap();
+
+        let mut data = PlotData::new();
+        data.insert(
+            "x".into(),
+            RawColumn::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
+        );
+        data.insert("y".into(), RawColumn::FloatArray(vec![10.0, 20.0, 30.0, 40.0]));
+        data.insert(
+            "g".into(),
+            RawColumn::StringArray(vec!["g1".into(), "g2".into(), "g1".into(), "g2".into()]),
+        );
+
+        let output = bp.render(data).unwrap();
+        let bars: Vec<_> = output
+            .regions
+            .get(&RegionKey::shared(PlotRegion::DataArea))
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, Element::Rect(_)))
+            .collect();
+        // 2 x-categories × 2 fill groups = 4 bars
+        assert_eq!(bars.len(), 4);
+        // Should have a legend (fill scale)
+        assert!(output.regions.contains_key(&RegionKey::shared(PlotRegion::Legend)));
+    }
+
+    #[test]
+    fn end_to_end_bar_stacked_with_fill() {
+        let source = "MAP x=:x, y=:y, fill=:g\nGEOM BAR\nSCALE X DISCRETE";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let mut bp = compile(&program, &theme).unwrap();
+
+        let mut data = PlotData::new();
+        data.insert(
+            "x".into(),
+            RawColumn::StringArray(vec!["a".into(), "a".into(), "b".into(), "b".into()]),
+        );
+        data.insert("y".into(), RawColumn::FloatArray(vec![10.0, 20.0, 30.0, 40.0]));
+        data.insert(
+            "g".into(),
+            RawColumn::StringArray(vec!["g1".into(), "g2".into(), "g1".into(), "g2".into()]),
+        );
+
+        let output = bp.render(data).unwrap();
+        let bars: Vec<_> = output
+            .regions
+            .get(&RegionKey::shared(PlotRegion::DataArea))
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, Element::Rect(_)))
+            .collect();
+        // 4 data rows → 4 stacked bar segments
+        assert_eq!(bars.len(), 4);
+    }
+
+    #[test]
+    fn compile_rejects_position_on_point() {
+        let source = "GEOM POINT DODGE";
+        let program = parse(source).unwrap();
+        let theme = Theme::default();
+        let result = compile(&program, &theme);
+        match result {
+            Err(e) => assert!(e.to_string().contains("Position adjustment")),
+            Ok(_) => panic!("Expected compile error for GEOM POINT DODGE"),
+        }
     }
 }
