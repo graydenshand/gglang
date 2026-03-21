@@ -1,0 +1,5 @@
+MAP x=:x, y=:y, color=:species, alpha=:y
+GEOM POINT
+TITLE "Alpha mapped to y"
+XLABEL "X"
+YLABEL "Y"

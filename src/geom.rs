@@ -83,6 +83,13 @@ pub trait Geometry {
     }
 }
 
+fn get_alpha(data: &ResolvedData, n: usize) -> Vec<f32> {
+    match data.mapped.get(&Aesthetic::Alpha) {
+        Some(MappedColumn::FloatArray(v)) => v.clone(),
+        _ => vec![1.0; n],
+    }
+}
+
 /// GeomPoint renders a marker for every data point.
 ///
 /// It is used to create the archetypal "Scatterplot".
@@ -97,7 +104,7 @@ impl Geometry for GeomPoint {
     }
 
     fn extra_aesthetics(&self) -> Vec<Aesthetic> {
-        vec![Aesthetic::Color]
+        vec![Aesthetic::Color, Aesthetic::Alpha]
     }
 
     fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
@@ -132,11 +139,12 @@ impl Geometry for GeomPoint {
         };
 
         let n = x_mapped.len();
+        let alphas = get_alpha(data, n);
         let mut points = Vec::with_capacity(n);
         for i in 0..n {
-            let color = colors.map_or([0.0, 0.0, 0.0, 1.0], |c| {
+            let color = colors.map_or([0.0, 0.0, 0.0, alphas[i]], |c| {
                 let [r, g, b] = c[i];
-                [r, g, b, 1.0]
+                [r, g, b, alphas[i]]
             });
             points.push(Element::Point(PointData {
                 position: [x_mapped[i], y_mapped[i]],
@@ -163,7 +171,7 @@ impl Geometry for GeomLine {
     }
 
     fn extra_aesthetics(&self) -> Vec<Aesthetic> {
-        vec![Aesthetic::Group, Aesthetic::Color]
+        vec![Aesthetic::Group, Aesthetic::Color, Aesthetic::Alpha]
     }
 
     fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
@@ -197,6 +205,9 @@ impl Geometry for GeomLine {
             None => None,
         };
 
+        let n = x_mapped.len();
+        let alphas = get_alpha(data, n);
+
         // Partition row indices by group value (or all rows = one group)
         let groups: Vec<Vec<usize>> =
             if let Some(RawColumn::StringArray(group_vals)) = data.raw.get(&Aesthetic::Group) {
@@ -210,7 +221,7 @@ impl Geometry for GeomLine {
                 }
                 group_map.into_iter().map(|(_, indices)| indices).collect()
             } else {
-                vec![(0..x_mapped.len()).collect()]
+                vec![(0..n).collect()]
             };
 
         let mut elements = vec![];
@@ -225,9 +236,9 @@ impl Geometry for GeomLine {
             let point_colors: Vec<[f32; 4]> = group_indices
                 .iter()
                 .map(|&i| {
-                    colors.map_or([0.0, 0.0, 0.0, 1.0], |c| {
+                    colors.map_or([0.0, 0.0, 0.0, alphas[i]], |c| {
                         let [r, g, b] = c[i];
-                        [r, g, b, 1.0]
+                        [r, g, b, alphas[i]]
                     })
                 })
                 .collect();
@@ -291,7 +302,7 @@ impl Geometry for GeomBar {
     }
 
     fn extra_aesthetics(&self) -> Vec<Aesthetic> {
-        vec![Aesthetic::Y, Aesthetic::Fill, Aesthetic::Color]
+        vec![Aesthetic::Y, Aesthetic::Fill, Aesthetic::Color, Aesthetic::Alpha]
     }
 
     fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
@@ -363,6 +374,7 @@ impl Geometry for GeomBar {
             distinct_x.iter().position(|v| (*v - x_ndc).abs() < 1e-6).unwrap_or(0)
         };
 
+        let alphas = get_alpha(data, n);
         let mut elements = vec![];
 
         match (&self.position, raw_fill) {
@@ -393,9 +405,9 @@ impl Geometry for GeomBar {
                     let bar_height = y_ndc - y_zero_ndc;
                     let bar_center_y = y_zero_ndc + bar_height / 2.0;
 
-                    let color = fill_colors.map_or(default_color, |c| {
+                    let color = fill_colors.map_or([default_color[0], default_color[1], default_color[2], alphas[i]], |c| {
                         let [r, g, b] = c[i];
-                        [r, g, b, 1.0]
+                        [r, g, b, alphas[i]]
                     });
 
                     elements.push(Element::Rect(Rectangle::new(
@@ -435,9 +447,9 @@ impl Geometry for GeomBar {
 
                         x_offsets[xi] = bar_top;
 
-                        let color = fill_colors.map_or(default_color, |c| {
+                        let color = fill_colors.map_or([default_color[0], default_color[1], default_color[2], alphas[i]], |c| {
                             let [r, g, b] = c[i];
-                            [r, g, b, 1.0]
+                            [r, g, b, alphas[i]]
                         });
 
                         elements.push(Element::Rect(Rectangle::new(
@@ -464,9 +476,9 @@ impl Geometry for GeomBar {
                     let bar_height = y_ndc - y_zero_ndc;
                     let bar_center_y = y_zero_ndc + bar_height / 2.0;
 
-                    let color = fill_colors.map_or(default_color, |c| {
+                    let color = fill_colors.map_or([default_color[0], default_color[1], default_color[2], alphas[i]], |c| {
                         let [r, g, b] = c[i];
-                        [r, g, b, 1.0]
+                        [r, g, b, alphas[i]]
                     });
 
                     elements.push(Element::Rect(Rectangle::new(

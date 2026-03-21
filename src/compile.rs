@@ -14,6 +14,7 @@ fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
         AstAesthetic::Color => Aesthetic::Color,
         AstAesthetic::Fill => Aesthetic::Fill,
         AstAesthetic::Group => Aesthetic::Group,
+        AstAesthetic::Alpha => Aesthetic::Alpha,
     }
 }
 

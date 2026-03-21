@@ -671,6 +671,68 @@ impl StatTransform for StatCount {
     }
 }
 
+/// A continuous scale mapping numeric data to alpha transparency in [0.1, 1.0].
+pub struct ScaleAlphaContinuous {
+    min: f64,
+    max: f64,
+}
+
+impl ScaleAlphaContinuous {
+    pub fn new() -> Self {
+        Self {
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
+        }
+    }
+}
+
+impl Scale for ScaleAlphaContinuous {
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
+        let vals = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
+        for val in vals {
+            if val < self.min { self.min = val; }
+            if val > self.max { self.max = val; }
+        }
+        Ok(())
+    }
+
+    fn fit(&mut self) -> Result<(), GglangError> {
+        if self.min.is_infinite() {
+            self.min = 0.0;
+            self.max = 1.0;
+        }
+        if (self.max - self.min).abs() < 1e-12 {
+            self.max = self.min + 1.0;
+        }
+        Ok(())
+    }
+
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
+        let vals = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
+        let range = self.max - self.min;
+        let mapped: Vec<f32> = vals
+            .iter()
+            .map(|&x| {
+                let t = ((x - self.min) / range).clamp(0.0, 1.0) as f32;
+                0.1 + t * 0.9
+            })
+            .collect();
+        Ok(MappedColumn::FloatArray(mapped))
+    }
+
+    fn render(&self, _theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        Ok((PlotRegion::Legend, vec![]))
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        AestheticFamily::Alpha
+    }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScaleAlphaContinuous::new())
+    }
+}
+
 /// Return the default scale for a given aesthetic, if one exists.
 /// `data_hint` is the raw column that will be mapped, used to auto-detect discrete vs continuous.
 pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -> Option<Box<dyn Scale>> {
@@ -693,6 +755,7 @@ pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -
         Aesthetic::Color => Some(Box::new(ScaleColorDiscrete::new())),
         Aesthetic::Fill => Some(Box::new(ScaleColorDiscrete::new_fill())),
         Aesthetic::Group => None,
+        Aesthetic::Alpha => Some(Box::new(ScaleAlphaContinuous::new())),
     }
 }
 
@@ -908,5 +971,51 @@ mod test {
         assert_eq!(region, PlotRegion::XAxisGutter);
         // 1 axis line + 2 ticks + 2 labels = 5 elements
         assert_eq!(elements.len(), 5);
+    }
+
+    #[test]
+    fn scale_alpha_continuous_maps_min_to_0_1_max_to_1_0() {
+        let mut scale = ScaleAlphaContinuous::new();
+        scale.append(&RawColumn::FloatArray(vec![0.0, 5.0, 10.0])).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![0.0, 10.0])).unwrap();
+        match mapped {
+            MappedColumn::FloatArray(v) => {
+                assert!((v[0] - 0.1).abs() < 1e-5, "min should map to 0.1, got {}", v[0]);
+                assert!((v[1] - 1.0).abs() < 1e-5, "max should map to 1.0, got {}", v[1]);
+            }
+            _ => panic!("Expected FloatArray"),
+        }
+    }
+
+    #[test]
+    fn scale_alpha_continuous_midpoint() {
+        let mut scale = ScaleAlphaContinuous::new();
+        scale.append(&RawColumn::FloatArray(vec![0.0, 10.0])).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![5.0])).unwrap();
+        match mapped {
+            MappedColumn::FloatArray(v) => {
+                assert!((v[0] - 0.55).abs() < 1e-5, "midpoint should map to 0.55, got {}", v[0]);
+            }
+            _ => panic!("Expected FloatArray"),
+        }
+    }
+
+    #[test]
+    fn scale_alpha_continuous_degenerate_domain() {
+        let mut scale = ScaleAlphaContinuous::new();
+        scale.append(&RawColumn::FloatArray(vec![5.0, 5.0])).unwrap();
+        scale.fit().unwrap(); // should not panic, extends max by 1
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![5.0])).unwrap();
+        match mapped {
+            MappedColumn::FloatArray(v) => {
+                assert!(v[0] >= 0.0 && v[0] <= 1.0);
+            }
+            _ => panic!("Expected FloatArray"),
+        }
     }
 }

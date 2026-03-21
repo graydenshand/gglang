@@ -77,6 +77,7 @@ pub enum AstAesthetic {
     Color,
     Fill,
     Group,
+    Alpha,
 }
 
 #[derive(Debug)]
@@ -179,6 +180,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "color" => AstAesthetic::Color,
                                             "fill" => AstAesthetic::Fill,
                                             "group" => AstAesthetic::Group,
+                                            "alpha" => AstAesthetic::Alpha,
                                             other => {
                                                 return Err(GglangError::Parse {
                                                     message: format!(
@@ -237,6 +239,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "color" => AstAesthetic::Color,
                                             "fill" => AstAesthetic::Fill,
                                             "group" => AstAesthetic::Group,
+                                            "alpha" => AstAesthetic::Alpha,
                                             other => {
                                                 return Err(GglangError::Parse {
                                                     message: format!(
@@ -924,6 +927,38 @@ mod tests {
         match &program.statements[0] {
             Statement::Geom(GeometryType::Point, _, pos) => {
                 assert!(pos.is_none());
+            }
+            _ => panic!("Expected Geom Point"),
+        }
+    }
+
+    #[test]
+    fn test_parse_alpha_mapped() {
+        let source = "MAP x=:x, y=:y, alpha=:density\nGEOM POINT";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Map(mappings) => {
+                assert_eq!(mappings.len(), 3);
+                assert!(matches!(mappings[2].aesthetic, AstAesthetic::Alpha));
+                assert_eq!(mappings[2].column, "density");
+            }
+            _ => panic!("Expected Map statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_alpha_constant() {
+        let source = "MAP x=:x, y=:y\nGEOM POINT { alpha=0.3 }";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[1] {
+            Statement::Geom(GeometryType::Point, attrs, _) => {
+                assert_eq!(attrs.len(), 1);
+                match &attrs[0] {
+                    GeomAttribute::Constant(AstAesthetic::Alpha, LiteralValue::Number(n)) => {
+                        assert!((n - 0.3).abs() < 1e-9);
+                    }
+                    _ => panic!("Expected constant alpha attribute"),
+                }
             }
             _ => panic!("Expected Geom Point"),
         }

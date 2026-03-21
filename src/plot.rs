@@ -193,11 +193,16 @@ impl<'a> Blueprint<'a> {
                         .insert(*aes, MappedColumn::ColorArray(vec![*rgb; data_len]));
                 }
                 ConstantValue::Float(f) => {
-                    let family = aes.family();
-                    if let Some(scale) = scales.iter().find(|s| s.aesthetic_family() == family) {
-                        let raw = RawColumn::FloatArray(vec![*f; data_len]);
-                        let mapped_col = scale.map(&raw)?;
-                        resolved.mapped.insert(*aes, mapped_col);
+                    if aes.family() == AestheticFamily::Alpha {
+                        // Alpha constant: inject directly as FloatArray, no scale lookup needed
+                        resolved.mapped.insert(*aes, MappedColumn::FloatArray(vec![*f as f32; data_len]));
+                    } else {
+                        let family = aes.family();
+                        if let Some(scale) = scales.iter().find(|s| s.aesthetic_family() == family) {
+                            let raw = RawColumn::FloatArray(vec![*f; data_len]);
+                            let mapped_col = scale.map(&raw)?;
+                            resolved.mapped.insert(*aes, mapped_col);
+                        }
                     }
                 }
             }

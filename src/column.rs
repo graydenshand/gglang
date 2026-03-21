@@ -72,6 +72,7 @@ impl RawColumn {
 pub enum MappedColumn {
     UnitArray(Vec<Unit>),
     ColorArray(Vec<[f32; 3]>),
+    FloatArray(Vec<f32>),
 }
 
 impl MappedColumn {
@@ -79,6 +80,7 @@ impl MappedColumn {
         match self {
             Self::UnitArray(v) => v.len(),
             Self::ColorArray(v) => v.len(),
+            Self::FloatArray(v) => v.len(),
         }
     }
 }

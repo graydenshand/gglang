@@ -1,0 +1,5 @@
+MAP x=:x, y=:y
+GEOM POINT { alpha=0.4 }
+TITLE "Constant alpha=0.4"
+XLABEL "X"
+YLABEL "Y"

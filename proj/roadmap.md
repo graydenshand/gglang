@@ -18,10 +18,10 @@
 15. ~~**Error handling**~~ — Replace `.unwrap()`/`.expect()` panics with `Result` propagation and structured errors. Covers parser, compiler, data loading, and render paths.
 16. ~~**ScalePositionDiscrete**~~ — Categorical position scale; auto-detects string columns; `SCALE X/Y DISCRETE` syntax overrides numeric columns. Unblocks `GeomBar`.
 17. ~~**Geom bar**~~ — `GeomBar` with stat count/identity, stack/dodge positioning, `Fill` aesthetic, `ScaleColorDiscrete` parameterized for Fill. Position adjustment grammar (`GEOM BAR DODGE`).
+18. ~~**Alpha aesthetic**~~ — `Aesthetic::Alpha`, `ScaleAlphaContinuous` (numeric → [0.1, 1.0]), constant injection, all geoms (point, line, bar) consume alpha.
 
 ## Current sprint
 
-- **Alpha aesthetic** (`stories/alpha_aesthetic.md`) — Control transparency, mapped or constant.
 - **Snapshot testing** (`issues/snapshot_testing.md`) — SVG-based regression testing framework.
 
 ## Backlog — Features
