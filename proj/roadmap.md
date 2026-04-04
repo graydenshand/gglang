@@ -21,25 +21,28 @@
 18. ~~**Alpha aesthetic**~~ — `Aesthetic::Alpha`, `ScaleAlphaContinuous` (numeric → [0.1, 1.0]), constant injection, all geoms (point, line, bar) consume alpha.
 19. ~~**Snapshot testing**~~ — SVG-based regression testing framework using `insta`; 14 example `.gg`+`.csv` pairs checked in as reference snapshots.
 
-## Current sprint
+## Current sprint — v0.1.0
+
+Target: credible, demo-able grammar-of-graphics engine with core ggplot2 vocabulary.
+
+1. **Polar coordinates** (`stories/coord_polar.md`) — `COORD POLAR` transform for pie charts, radar plots, rose diagrams. Exercises the coordinate system abstraction.
+2. **Geom text** (`stories/geom_text.md`) — Annotate points with text labels. Maps `label` aesthetic to positioned text.
+3. **Continuous color scale** (`stories/scale_color_continuous.md`) — Map numeric variable to color gradient (viridis-style). Prerequisite for heatmaps.
+4. **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references.
+5. **Log scale** (`stories/log_scale.md`) — `ScaleLogContinuous` for orders-of-magnitude data.
+6. **Geom histogram** (`stories/geom_histogram.md`) — `StatBin` + bar rendering for continuous distributions.
+7. **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. New SDF functions in the point shader.
+8. **Size aesthetic** (`stories/size_aesthetic.md`) — Map numeric variable to point radius for bubble charts.
+9. **Multi-legend layout** (`stories/multi_legend.md`) — Stack multiple legends (color, shape, size) in the legend region.
+10. **Error diagnostics** (`stories/error_diagnostics.md`) — Helpful parse/compile/data error messages with source locations and suggestions.
+11. **Example datasets** (`stories/example_datasets.md`) — Curated real-world CSVs (gapminder, penguins, etc.) replacing toy data in examples and docs.
+12. **Documentation site** (`stories/docs_site.md`) — GQL language docs: conceptual guide, feature reference, and gallery with rendered examples. Separate from crate docs.
 
 ## Backlog — Features
 
-- **Geom text** (`stories/geom_text.md`) — Annotate points with text labels. Maps `label` aesthetic to positioned text.
-- **Continuous color scale** (`stories/scale_color_continuous.md`) — Map numeric variable to color gradient. Prerequisite for heatmaps.
-- **Geom histogram** (`stories/geom_histogram.md`) — Bin continuous data and plot distribution.
 - **Geom tile** (`stories/geom_tile.md`) — Heatmap / tile plot with two categorical axes and fill color.
-- **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. Requires new SDF functions in the point shader.
-- **Size aesthetic** (`stories/size_aesthetic.md`) — Map numeric variable to point radius for bubble charts.
-- **Multi-legend layout** (`stories/multi_legend.md`) — Stack multiple legends (color, shape, size) in the legend region. Stress-tests layout.
-- **Polar coordinates** (`stories/coord_polar.md`) — `COORD POLAR` transform for pie charts, radar plots, rose diagrams.
 - **Zoom & pan** (`stories/zoom_pan.md`) — Activate the view transform uniform with mouse/trackpad input.
-- **Nested layouts / sparklines** (`stories/nested_layouts_sparklines.md`) — Low priority. Nest mini-plots inside layout cells.
-
-## Backlog — Infrastructure
-
-- **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references, stackable so a base company theme can be extended per-plot.
-- **Log scale** (`stories/log_scale.md`) — `ScaleLogContinuous` + `SCALE` statement grammar support.
+- **Nested layouts / sparklines** (`stories/nested_layouts_sparklines.md`) — Nest mini-plots inside layout cells.
 
 ## Backlog — Integrations
 
