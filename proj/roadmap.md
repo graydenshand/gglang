@@ -19,10 +19,9 @@
 16. ~~**ScalePositionDiscrete**~~ — Categorical position scale; auto-detects string columns; `SCALE X/Y DISCRETE` syntax overrides numeric columns. Unblocks `GeomBar`.
 17. ~~**Geom bar**~~ — `GeomBar` with stat count/identity, stack/dodge positioning, `Fill` aesthetic, `ScaleColorDiscrete` parameterized for Fill. Position adjustment grammar (`GEOM BAR DODGE`).
 18. ~~**Alpha aesthetic**~~ — `Aesthetic::Alpha`, `ScaleAlphaContinuous` (numeric → [0.1, 1.0]), constant injection, all geoms (point, line, bar) consume alpha.
+19. ~~**Snapshot testing**~~ — SVG-based regression testing framework using `insta`; 14 example `.gg`+`.csv` pairs checked in as reference snapshots.
 
 ## Current sprint
-
-- **Snapshot testing** (`issues/snapshot_testing.md`) — SVG-based regression testing framework.
 
 ## Backlog — Features
 

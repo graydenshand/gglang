@@ -1,0 +1,54 @@
+---
+source: tests/svg_snapshots.rs
+expression: svg
+---
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+<rect x="0" y="0" width="1200" height="900" fill="white"/>
+<defs>
+  <clipPath id="cp0"><rect x="95.00" y="125.00" width="1090.00" height="710.00"/></clipPath>
+  <clipPath id="cp1"><rect x="15.00" y="15.00" width="1170.00" height="110.00"/></clipPath>
+  <clipPath id="cp2"><rect x="71.00" y="835.00" width="1138.00" height="50.00"/></clipPath>
+  <clipPath id="cp3"><rect x="-9.00" y="113.00" width="104.00" height="734.00"/></clipPath>
+</defs>
+<g clip-path="url(#cp0)">
+  <circle cx="231.25" cy="802.73" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="503.75" cy="641.36" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="776.25" cy="428.36" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="1048.75" cy="221.82" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+</g>
+<g clip-path="url(#cp1)">
+  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+    <tspan x="600.00" dy="0.0">Sales by Year (Discrete X)</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp2)">
+  <rect x="95.00" y="834.50" width="1090.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="230.75" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="231.25" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">2021</text>
+  <rect x="503.25" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="503.75" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">2022</text>
+  <rect x="775.75" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="776.25" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">2023</text>
+  <rect x="1048.25" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="1048.75" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">2024</text>
+  <text x="640.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+    <tspan x="640.00" dy="0.0">Year</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp3)">
+  <rect x="94.50" y="125.00" width="1.00" height="710.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="92.00" y="802.23" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="802.73" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">120</text>
+  <rect x="92.00" y="673.14" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="673.64" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">140</text>
+  <rect x="92.00" y="544.05" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="544.55" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">160</text>
+  <rect x="92.00" y="414.95" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="415.45" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">180</text>
+  <rect x="92.00" y="285.86" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="286.36" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">200</text>
+  <rect x="92.00" y="156.77" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">220</text>
+  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,35.00,480.00)">Sales</text>
+</g>
+</svg>
