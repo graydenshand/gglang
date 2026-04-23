@@ -121,10 +121,21 @@ pub struct PointData {
     pub color: [f32; 4],
 }
 
-/// An element can be a Rect, Point, Polyline, or Text
+/// Domain-level arc/wedge data — used for pie charts and polar bar rendering.
+pub struct ArcData {
+    pub center: [Unit; 2],
+    pub inner_radius: Unit,
+    pub outer_radius: Unit,
+    pub start_angle: f32, // radians
+    pub end_angle: f32,   // radians
+    pub color: [f32; 4],
+}
+
+/// An element can be a Rect, Point, Polyline, Text, or Arc
 pub enum Element {
     Rect(Rectangle),
     Point(PointData),
     Polyline(PolylineData),
     Text(Text),
+    Arc(ArcData),
 }

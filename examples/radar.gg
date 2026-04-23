@@ -1,0 +1,4 @@
+MAP x=:metric, y=:score, color=:player, group=:player
+GEOM LINE
+COORD POLAR
+TITLE "Player Stats"

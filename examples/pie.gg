@@ -1,0 +1,4 @@
+MAP x=:category, y=:count, fill=:category
+GEOM BAR
+COORD POLAR
+TITLE "Fruit Distribution"

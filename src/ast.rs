@@ -50,6 +50,7 @@ pub enum Statement {
     Caption(String),
     XLabel(String),
     YLabel(String),
+    Coord(CoordType),
 }
 
 #[derive(Debug)]
@@ -91,6 +92,12 @@ pub enum GeometryType {
 pub enum PositionAdjustment {
     Stack,
     Dodge,
+}
+
+#[derive(Debug, Clone)]
+pub enum CoordType {
+    Cartesian,
+    Polar { start: f64 },
 }
 
 fn parse_data_reference(pair: pest::iterators::Pair<Rule>) -> Result<String, GglangError> {
@@ -441,6 +448,44 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             _ => unreachable!(),
                         };
                         statements.push(Statement::Facet(spec));
+                    }
+                    Rule::coord_statement => {
+                        let mut inner = stmt_inner.into_inner();
+                        let coord_type_str = inner
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected coord type in coord_statement".to_string(),
+                            })?
+                            .as_str();
+                        let coord = match coord_type_str {
+                            "CARTESIAN" => CoordType::Cartesian,
+                            "POLAR" => {
+                                let mut start = 0.0;
+                                if let Some(start_pair) = inner.next() {
+                                    if start_pair.as_rule() == Rule::coord_start {
+                                        let n: f64 = start_pair
+                                            .into_inner()
+                                            .next()
+                                            .ok_or_else(|| GglangError::Parse {
+                                                message: "Expected number in COORD POLAR START".to_string(),
+                                            })?
+                                            .as_str()
+                                            .parse()
+                                            .map_err(|_| GglangError::Parse {
+                                                message: "Invalid number in COORD POLAR START".to_string(),
+                                            })?;
+                                        start = n;
+                                    }
+                                }
+                                CoordType::Polar { start }
+                            }
+                            other => {
+                                return Err(GglangError::Parse {
+                                    message: format!("Unsupported coord type: {}", other),
+                                })
+                            }
+                        };
+                        statements.push(Statement::Coord(coord));
                     }
                     Rule::title_statement => {
                         let s = stmt_inner
@@ -961,6 +1006,41 @@ mod tests {
                 }
             }
             _ => panic!("Expected Geom Point"),
+        }
+    }
+
+    #[test]
+    fn test_parse_coord_polar() {
+        let source = "MAP x=:x, y=:y\nGEOM POINT\nCOORD POLAR";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 3);
+        match &program.statements[2] {
+            Statement::Coord(CoordType::Polar { start }) => {
+                assert!((start - 0.0).abs() < 1e-9);
+            }
+            _ => panic!("Expected Coord Polar statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_coord_polar_start() {
+        let source = "COORD POLAR START 1.57";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Coord(CoordType::Polar { start }) => {
+                assert!((start - 1.57).abs() < 1e-9);
+            }
+            _ => panic!("Expected Coord Polar with start angle"),
+        }
+    }
+
+    #[test]
+    fn test_parse_coord_cartesian() {
+        let source = "COORD CARTESIAN";
+        let program = parse(source).expect("Parse should succeed");
+        match &program.statements[0] {
+            Statement::Coord(CoordType::Cartesian) => {}
+            _ => panic!("Expected Coord Cartesian statement"),
         }
     }
 }

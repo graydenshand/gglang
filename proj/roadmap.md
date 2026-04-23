@@ -20,12 +20,12 @@
 17. ~~**Geom bar**~~ — `GeomBar` with stat count/identity, stack/dodge positioning, `Fill` aesthetic, `ScaleColorDiscrete` parameterized for Fill. Position adjustment grammar (`GEOM BAR DODGE`).
 18. ~~**Alpha aesthetic**~~ — `Aesthetic::Alpha`, `ScaleAlphaContinuous` (numeric → [0.1, 1.0]), constant injection, all geoms (point, line, bar) consume alpha.
 19. ~~**Snapshot testing**~~ — SVG-based regression testing framework using `insta`; 14 example `.gg`+`.csv` pairs checked in as reference snapshots.
+20. ~~**Polar coordinates**~~ — `COORD POLAR` transform for pie/rose charts, radar plots, polar scatter. `CoordinateSystem::Polar` with `Element::Arc` for wedges, polar axis rendering (concentric circles + radial spokes), SVG+GPU backends.
 
 ## Current sprint — v0.1.0
 
 Target: credible, demo-able grammar-of-graphics engine with core ggplot2 vocabulary.
 
-1. **Polar coordinates** (`stories/coord_polar.md`) — `COORD POLAR` transform for pie charts, radar plots, rose diagrams. Exercises the coordinate system abstraction.
 2. **Geom text** (`stories/geom_text.md`) — Annotate points with text labels. Maps `label` aesthetic to positioned text.
 3. **Continuous color scale** (`stories/scale_color_continuous.md`) — Map numeric variable to color gradient (viridis-style). Prerequisite for heatmaps.
 4. **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references.

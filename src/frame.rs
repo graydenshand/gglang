@@ -2,7 +2,7 @@
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::layout::{PlotOutput, WindowSegment};
+use crate::layout::{PlotOutput, PlotRegion, WindowSegment};
 use crate::theme::Theme;
 use crate::shape::{Element, HAlign, Rectangle, Text, TextRotation, VAlign};
 use crate::transform::ContinuousNumericScale;
@@ -539,7 +539,16 @@ impl Frame {
         let window_height_u32 = window.inner_size().height;
         let root_segment = WindowSegment::new_root(window_width, window_height_u32);
         let margined = root_segment.with_margin(theme.window_margin);
-        let segments = plot_output.layout.resolve(&margined);
+        let mut segments = plot_output.layout.resolve(&margined);
+
+        // For polar plots, square up DataArea segments so circles aren't distorted.
+        if plot_output.is_polar {
+            for (key, seg) in segments.iter_mut() {
+                if key.region == PlotRegion::DataArea {
+                    *seg = seg.squared();
+                }
+            }
+        }
         let window_height = window_height_u32 as f32;
 
         let mut vertices: Vec<Vertex> = vec![];
@@ -588,6 +597,57 @@ impl Frame {
                             &mut line_vertices,
                             &mut line_indices,
                         );
+                    }
+                    Element::Arc(arc) => {
+                        let cx = segment.abs_x(&arc.center[0]);
+                        let cy = segment.abs_y(&arc.center[1]);
+                        // Use separate X/Y radii so arcs appear circular despite
+                        // anisotropic clip space (1 clip unit ≠ same physical distance
+                        // in X vs Y when the viewport isn't square).
+                        let r_outer_x = segment.abs_width(&arc.outer_radius);
+                        let r_outer_y = segment.abs_height(&arc.outer_radius);
+                        let r_inner_x = segment.abs_width(&arc.inner_radius);
+                        let r_inner_y = segment.abs_height(&arc.inner_radius);
+                        // Tessellate arc into triangle fan/strip
+                        let steps = ((arc.end_angle - arc.start_angle).abs() / 0.02).ceil() as usize;
+                        let steps = steps.max(4);
+                        let base = vertices.len() as u32;
+                        if r_inner_x <= 0.001 {
+                            // Pie wedge: triangle fan from center
+                            vertices.push(Vertex { position: [cx, cy, 0.0], color: arc.color });
+                            for i in 0..=steps {
+                                let t = i as f32 / steps as f32;
+                                let angle = arc.start_angle + t * (arc.end_angle - arc.start_angle);
+                                let x = cx + r_outer_x * angle.cos();
+                                let y = cy + r_outer_y * angle.sin();
+                                vertices.push(Vertex { position: [x, y, 0.0], color: arc.color });
+                            }
+                            for i in 0..steps as u32 {
+                                indices.push(base);           // center
+                                indices.push(base + 1 + i);   // current edge
+                                indices.push(base + 2 + i);   // next edge
+                            }
+                        } else {
+                            // Annular wedge: quad strip between inner and outer
+                            for i in 0..=steps {
+                                let t = i as f32 / steps as f32;
+                                let angle = arc.start_angle + t * (arc.end_angle - arc.start_angle);
+                                let cos_a = angle.cos();
+                                let sin_a = angle.sin();
+                                vertices.push(Vertex {
+                                    position: [cx + r_inner_x * cos_a, cy + r_inner_y * sin_a, 0.0],
+                                    color: arc.color,
+                                });
+                                vertices.push(Vertex {
+                                    position: [cx + r_outer_x * cos_a, cy + r_outer_y * sin_a, 0.0],
+                                    color: arc.color,
+                                });
+                            }
+                            for i in 0..steps as u32 {
+                                let j = base + i * 2;
+                                indices.extend_from_slice(&[j, j + 1, j + 3, j, j + 3, j + 2]);
+                            }
+                        }
                     }
                     Element::Text(t) => {
                         text_sections_by_rotation

@@ -1,8 +1,8 @@
 use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
-use crate::ast::{AstAesthetic, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement};
+use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement};
 use crate::error::GglangError;
 use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint};
-use crate::plot::{Blueprint, Layer};
+use crate::plot::{Blueprint, CoordinateSystem, Layer};
 use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
 use crate::theme::Theme;
 use std::collections::HashMap;
@@ -111,6 +111,13 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
             }
             Statement::Facet(spec) => {
                 bp = bp.with_facet_spec(spec.clone());
+            }
+            Statement::Coord(coord_type) => {
+                let coord = match coord_type {
+                    CoordType::Cartesian => CoordinateSystem::Cartesian,
+                    CoordType::Polar { start } => CoordinateSystem::Polar { start_angle: *start },
+                };
+                bp = bp.with_coordinates(coord);
             }
             Statement::Title(s) => bp = bp.with_title(s.clone()),
             Statement::Caption(s) => bp = bp.with_caption(s.clone()),

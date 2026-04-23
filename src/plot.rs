@@ -5,7 +5,7 @@ use crate::error::GglangError;
 use crate::geom::Geometry;
 use crate::layout::{LayoutNode, PlotOutput, PlotRegion, RegionKey, SizeSpec, SplitAxis, Unit};
 use crate::scale::{default_scale_for, PositionAdjustment, Scale, StatTransform};
-use crate::shape::{Element, Rectangle, Text, TextRotation, VAlign};
+use crate::shape::{ArcData, Element, PointData, PolylineData, Rectangle, Text, TextRotation, VAlign};
 use crate::theme::Theme;
 use std::collections::{HashMap, HashSet};
 
@@ -422,7 +422,7 @@ impl<'a> Blueprint<'a> {
                         )
                     }
                 };
-                Ok(PlotOutput { regions, layout })
+                Ok(PlotOutput { regions, layout, is_polar: self.coordinates.is_polar() })
             }
             None => {
                 // --- Non-faceted rendering (original path) ---
@@ -433,32 +433,59 @@ impl<'a> Blueprint<'a> {
                         message: format!("Layer {} has no AesData", i),
                     })?;
                     let resolved = self.resolve_layer(layer, layer_aes)?;
-                    let mut geom_elements = layer.geometry.render(&resolved)?;
+                    let geom_elements = layer.geometry.render(&resolved)?;
+                    let mut geom_elements = self.coordinates.transform_elements(geom_elements);
                     regions
                         .entry(RegionKey::shared(PlotRegion::DataArea))
                         .or_default()
                         .append(&mut geom_elements);
                 }
 
-                // Render scales — each declares its own region
-                for scale in &self.scales {
-                    let (region, mut scale_elements) = scale.render(self.theme)?;
+                // Render scales / axes
+                if self.coordinates.is_polar() {
+                    // Polar axes: concentric circles + radial spokes + labels
+                    let mut polar_elements = self.coordinates.render_polar_axes(&self.scales, self.theme);
                     regions
-                        .entry(RegionKey::shared(region))
+                        .entry(RegionKey::shared(PlotRegion::DataArea))
                         .or_default()
-                        .append(&mut scale_elements);
+                        .append(&mut polar_elements);
+                    // Still render non-positional scales (color/fill legends)
+                    for scale in &self.scales {
+                        if matches!(scale.aesthetic_family(), AestheticFamily::HorizontalPosition | AestheticFamily::VerticalPosition) {
+                            continue;
+                        }
+                        let (region, mut scale_elements) = scale.render(self.theme)?;
+                        regions
+                            .entry(RegionKey::shared(region))
+                            .or_default()
+                            .append(&mut scale_elements);
+                    }
+                } else {
+                    for scale in &self.scales {
+                        let (region, mut scale_elements) = scale.render(self.theme)?;
+                        regions
+                            .entry(RegionKey::shared(region))
+                            .or_default()
+                            .append(&mut scale_elements);
+                    }
                 }
 
                 // Labels
-                self.emit_labels(&mut regions, &raw_data);
+                if !self.coordinates.is_polar() {
+                    self.emit_labels(&mut regions, &raw_data);
+                }
 
                 let has_legend = self
                     .scales
                     .iter()
                     .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill));
-                let layout = standard_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme);
+                let layout = if self.coordinates.is_polar() {
+                    polar_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme)
+                } else {
+                    standard_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme)
+                };
 
-                Ok(PlotOutput { regions, layout })
+                Ok(PlotOutput { regions, layout, is_polar: self.coordinates.is_polar() })
             }
         }
     }
@@ -544,7 +571,8 @@ impl<'a> Blueprint<'a> {
             // Render layer geometry
             for (i, layer) in self.layers.iter().enumerate() {
                 let resolved = self.resolve_layer_with_scale_refs(layer, &panel_layer_aes[i], &scale_refs)?;
-                let mut geom_elements = layer.geometry.render(&resolved)?;
+                let geom_elements = layer.geometry.render(&resolved)?;
+                let mut geom_elements = self.coordinates.transform_elements(geom_elements);
                 regions
                     .entry(RegionKey::panel(PlotRegion::DataArea, panel_idx))
                     .or_default()
@@ -793,7 +821,8 @@ impl<'a> Blueprint<'a> {
 
                 for (i, layer) in self.layers.iter().enumerate() {
                     let resolved = self.resolve_layer_with_scale_refs(layer, &panel_layer_aes[i], &scale_refs)?;
-                    let mut geom_elements = layer.geometry.render(&resolved)?;
+                    let geom_elements = layer.geometry.render(&resolved)?;
+                    let mut geom_elements = self.coordinates.transform_elements(geom_elements);
                     regions
                         .entry(RegionKey::panel(PlotRegion::DataArea, panel_idx))
                         .or_default()
@@ -1104,9 +1133,248 @@ impl Layer {
     }
 }
 
-// should this be a trait?
-enum CoordinateSystem {
+pub enum CoordinateSystem {
     Cartesian,
+    Polar { start_angle: f64 },
+}
+
+impl CoordinateSystem {
+    pub fn is_polar(&self) -> bool {
+        matches!(self, CoordinateSystem::Polar { .. })
+    }
+
+    /// Transform elements from Cartesian NDC into polar coordinates.
+    /// X NDC [-1,1] → angle [0, 2π], Y NDC [-1,1] → radius [0, max_r].
+    /// max_r is 0.85 in NDC to leave room for labels around the perimeter.
+    pub fn transform_elements(&self, elements: Vec<Element>) -> Vec<Element> {
+        match self {
+            CoordinateSystem::Cartesian => elements,
+            CoordinateSystem::Polar { start_angle } => {
+                let start = *start_angle as f32;
+                let max_r: f32 = 0.85; // leave margin for perimeter labels
+                elements.into_iter().map(|e| match e {
+                    Element::Point(p) => {
+                        let (x, y) = polar_remap_point(&p.position, start, max_r);
+                        Element::Point(PointData {
+                            position: [x, y],
+                            size: p.size,
+                            color: p.color,
+                        })
+                    }
+                    Element::Polyline(pl) => {
+                        let points: Vec<[Unit; 2]> = pl.points.iter()
+                            .map(|pt| {
+                                let (x, y) = polar_remap_point(pt, start, max_r);
+                                [x, y]
+                            })
+                            .collect();
+                        // Close the polygon for radar charts
+                        let mut closed_points = points;
+                        if closed_points.len() >= 3 {
+                            let first = closed_points[0];
+                            closed_points.push(first);
+                        }
+                        let mut closed_colors = pl.colors;
+                        if !closed_colors.is_empty() {
+                            let first = closed_colors[0];
+                            closed_colors.push(first);
+                        }
+                        Element::Polyline(PolylineData {
+                            points: closed_points,
+                            thickness: pl.thickness,
+                            colors: closed_colors,
+                        })
+                    }
+                    Element::Rect(r) => {
+                        // Convert bar rectangle to arc wedge
+                        let cx_ndc = extract_ndc(&r.position[0]);
+                        let cy_ndc = extract_ndc(&r.position[1]);
+                        let w_ndc = extract_ndc(&r.width);
+                        let h_ndc = extract_ndc(&r.height);
+
+                        // X center → angular center, X width → angular span
+                        // Expand by 1/0.8 to remove inter-bar padding (GeomBar uses 80% of band)
+                        let angle_center = ndc_to_angle(cx_ndc, start);
+                        let angle_half = (w_ndc / 2.0) * std::f32::consts::PI / 0.8;
+
+                        // Y base/top → inner/outer radius
+                        let y_bottom = cy_ndc - h_ndc / 2.0;
+                        let y_top = cy_ndc + h_ndc / 2.0;
+                        let r_inner = ndc_to_radius(y_bottom, max_r).max(0.0);
+                        // Clamp near-zero inner radius to zero (handles 5% scale expansion)
+                        let r_inner = if r_inner < 0.05 { 0.0 } else { r_inner };
+                        let r_outer = ndc_to_radius(y_top, max_r);
+                        // Bars from the baseline extend to the full circle edge
+                        let r_outer = if r_inner < 0.01 { max_r } else { r_outer };
+
+                        Element::Arc(ArcData {
+                            center: [Unit::NDC(0.0), Unit::NDC(0.0)],
+                            inner_radius: Unit::NDC(r_inner),
+                            outer_radius: Unit::NDC(r_outer),
+                            start_angle: angle_center - angle_half,
+                            end_angle: angle_center + angle_half,
+                            color: r.color,
+                        })
+                    }
+                    Element::Text(t) => {
+                        let (x, y) = polar_remap_point(
+                            &[t.position.0, t.position.1],
+                            start,
+                            max_r,
+                        );
+                        Element::Text(Text {
+                            position: (x, y),
+                            ..t
+                        })
+                    }
+                    Element::Arc(_) => e, // already polar
+                }).collect()
+            }
+        }
+    }
+
+    /// Render polar axis elements (concentric circles + radial spokes + labels)
+    /// directly into the DataArea region.
+    pub fn render_polar_axes(
+        &self,
+        scales: &[Box<dyn Scale>],
+        theme: &Theme,
+    ) -> Vec<Element> {
+        let CoordinateSystem::Polar { start_angle } = self else {
+            return vec![];
+        };
+        let start = *start_angle as f32;
+        let max_r: f32 = 0.85;
+        let label_r: f32 = 0.95; // radius for angular labels
+        let mut elements = vec![];
+        let grid_color = [0.85, 0.85, 0.85, 1.0];
+        let n_circle_segments = 64;
+
+        // Find X and Y position scales
+        let x_scale = scales.iter().find(|s| {
+            matches!(s.aesthetic_family(), AestheticFamily::HorizontalPosition)
+        });
+        let y_scale = scales.iter().find(|s| {
+            matches!(s.aesthetic_family(), AestheticFamily::VerticalPosition)
+        });
+
+        // Concentric circles for Y-axis gridlines
+        if let Some(ys) = y_scale {
+            let (_, y_elements) = ys.render(theme).unwrap_or((PlotRegion::YAxisGutter, vec![]));
+            // Extract tick positions from rendered Y axis elements
+            // Y ticks appear as Rect (tick marks) — we use their Y NDC positions as radii
+            for el in &y_elements {
+                if let Element::Rect(r) = el {
+                    // Tick marks are 1px tall (or wide) — we use their Y position
+                    let y_ndc = extract_ndc(&r.position[1]);
+                    let radius = ndc_to_radius(y_ndc, max_r);
+                    if radius < 0.01 { continue; }
+                    // Draw concentric circle
+                    let mut pts = Vec::with_capacity(n_circle_segments + 1);
+                    let mut colors = Vec::with_capacity(n_circle_segments + 1);
+                    for j in 0..=n_circle_segments {
+                        let a = j as f32 / n_circle_segments as f32 * std::f32::consts::TAU;
+                        pts.push([
+                            Unit::NDC(radius * a.cos()),
+                            Unit::NDC(radius * a.sin()),
+                        ]);
+                        colors.push(grid_color);
+                    }
+                    elements.push(Element::Polyline(PolylineData {
+                        points: pts,
+                        thickness: 1.0,
+                        colors,
+                    }));
+                }
+            }
+        }
+
+        // Bounding circle at max_r so arcs (forced to max_r) align with a grid line
+        {
+            let mut pts = Vec::with_capacity(n_circle_segments + 1);
+            let mut colors = Vec::with_capacity(n_circle_segments + 1);
+            for j in 0..=n_circle_segments {
+                let a = j as f32 / n_circle_segments as f32 * std::f32::consts::TAU;
+                pts.push([
+                    Unit::NDC(max_r * a.cos()),
+                    Unit::NDC(max_r * a.sin()),
+                ]);
+                colors.push(grid_color);
+            }
+            elements.push(Element::Polyline(PolylineData {
+                points: pts,
+                thickness: 1.0,
+                colors,
+            }));
+        }
+
+        // Radial spokes + angular labels for X-axis categories/ticks
+        if let Some(xs) = x_scale {
+            let (_, x_elements) = xs.render(theme).unwrap_or((PlotRegion::XAxisGutter, vec![]));
+            // Extract tick labels and their X NDC positions
+            for el in &x_elements {
+                match el {
+                    Element::Rect(r) => {
+                        // Tick mark — draw radial spoke
+                        let x_ndc = extract_ndc(&r.position[0]);
+                        let angle = ndc_to_angle(x_ndc, start);
+                        let spoke_r = max_r;
+                        elements.push(Element::Polyline(PolylineData {
+                            points: vec![
+                                [Unit::NDC(0.0), Unit::NDC(0.0)],
+                                [Unit::NDC(spoke_r * angle.cos()), Unit::NDC(spoke_r * angle.sin())],
+                            ],
+                            thickness: 1.0,
+                            colors: vec![grid_color, grid_color],
+                        }));
+                    }
+                    Element::Text(t) => {
+                        // Angular label — position around perimeter
+                        let x_ndc = extract_ndc(&t.position.0);
+                        let angle = ndc_to_angle(x_ndc, start);
+                        let lx = label_r * angle.cos();
+                        let ly = label_r * angle.sin();
+                        elements.push(Element::Text(Text::centered(
+                            t.value.clone(),
+                            theme.tick_label_font_size,
+                            (Unit::NDC(lx), Unit::NDC(ly)),
+                        ).with_v_align(VAlign::Center)));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        elements
+    }
+}
+
+/// Map X NDC [-1,1] to angle in radians (0 at top, clockwise).
+fn ndc_to_angle(x_ndc: f32, start: f32) -> f32 {
+    // Map [-1, 1] → [0, 2π], starting from top (π/2) going clockwise
+    let frac = (x_ndc + 1.0) / 2.0;
+    std::f32::consts::FRAC_PI_2 - frac * std::f32::consts::TAU + start
+}
+
+/// Map Y NDC [-1,1] to radius [0, max_r].
+fn ndc_to_radius(y_ndc: f32, max_r: f32) -> f32 {
+    ((y_ndc + 1.0) / 2.0) * max_r
+}
+
+/// Remap a point from Cartesian NDC to polar NDC.
+fn polar_remap_point(pos: &[Unit; 2], start: f32, max_r: f32) -> (Unit, Unit) {
+    let x_ndc = extract_ndc(&pos[0]);
+    let y_ndc = extract_ndc(&pos[1]);
+    let angle = ndc_to_angle(x_ndc, start);
+    let r = ndc_to_radius(y_ndc, max_r);
+    (Unit::NDC(r * angle.cos()), Unit::NDC(r * angle.sin()))
+}
+
+fn extract_ndc(u: &Unit) -> f32 {
+    match u {
+        Unit::NDC(v) => *v,
+        _ => 0.0,
+    }
 }
 
 /// Build the standard single-plot layout tree.
@@ -1138,6 +1406,43 @@ fn standard_plot_layout(has_title: bool, has_caption: bool, has_legend: bool, th
             children: vec![
                 (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Legend))),
                 (SizeSpec::Pixels(theme.x_gutter_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))),
+            ],
+        };
+        main_columns.push((SizeSpec::Pixels(theme.legend_margin), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))));
+        main_columns.push((SizeSpec::Pixels(theme.legend_width), legend_column));
+    }
+
+    let main = LayoutNode::Split {
+        axis: SplitAxis::Horizontal,
+        children: main_columns,
+    };
+
+    let mut rows: Vec<(SizeSpec, LayoutNode)> = vec![];
+    if has_title {
+        rows.push((SizeSpec::Pixels(theme.title_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Title))));
+    }
+    rows.push((SizeSpec::Flex(1.0), main));
+    if has_caption {
+        rows.push((SizeSpec::Pixels(theme.caption_height), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Caption))));
+    }
+
+    LayoutNode::Split {
+        axis: SplitAxis::Vertical,
+        children: rows,
+    }
+}
+
+/// Build a polar plot layout — no axis gutters, just data area + optional legend/title/caption.
+fn polar_plot_layout(has_title: bool, has_caption: bool, has_legend: bool, theme: &Theme) -> LayoutNode {
+    let mut main_columns: Vec<(SizeSpec, LayoutNode)> = vec![
+        (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::shared(PlotRegion::DataArea))),
+    ];
+
+    if has_legend {
+        let legend_column = LayoutNode::Split {
+            axis: SplitAxis::Vertical,
+            children: vec![
+                (SizeSpec::Flex(1.0), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Legend))),
             ],
         };
         main_columns.push((SizeSpec::Pixels(theme.legend_margin), LayoutNode::Leaf(RegionKey::shared(PlotRegion::Spacer))));

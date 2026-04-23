@@ -46,3 +46,6 @@ snapshot_test!(bar_stacked, "bar_stacked.gg", "bar_data.csv");
 snapshot_test!(bar_dodge, "bar_dodge.gg", "bar_data.csv");
 snapshot_test!(bar_count_fill, "bar_count_fill.gg", "bar_data.csv");
 snapshot_test!(bar_dodge_count, "bar_dodge_count.gg", "bar_data.csv");
+snapshot_test!(pie, "pie.gg", "pie.csv");
+snapshot_test!(radar, "radar.gg", "radar.csv");
+snapshot_test!(polar_scatter, "polar_scatter.gg", "iris-mock.csv");

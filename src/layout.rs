@@ -182,6 +182,52 @@ impl WindowSegment {
         }
     }
 
+    /// Constrain this segment to a square (using the smaller pixel dimension),
+    /// centered within the original rectangle. NDC scales are also adjusted so
+    /// that NDC-to-pixel ratios are equal on both axes.
+    pub fn squared(&self) -> Self {
+        let px_w = self.pixel_scale_x.span();
+        let px_h = self.pixel_scale_y.span();
+        if (px_w - px_h).abs() < 1.0 {
+            return self.clone();
+        }
+        // Shrink the larger dimension (both NDC and pixel ranges proportionally)
+        // so the data area maps to a physically square region.
+        if px_w > px_h {
+            // Wider than tall — shrink X
+            let excess = px_w - px_h;
+            let ndc_excess = excess / px_w * self.ndc_scale_x.span();
+            Self {
+                ndc_scale_x: ContinuousNumericScale {
+                    min: self.ndc_scale_x.min + ndc_excess / 2.0,
+                    max: self.ndc_scale_x.max - ndc_excess / 2.0,
+                },
+                ndc_scale_y: self.ndc_scale_y,
+                pixel_scale_x: ContinuousNumericScale {
+                    min: self.pixel_scale_x.min + excess / 2.0,
+                    max: self.pixel_scale_x.max - excess / 2.0,
+                },
+                pixel_scale_y: self.pixel_scale_y,
+            }
+        } else {
+            // Taller than wide — shrink Y
+            let excess = px_h - px_w;
+            let ndc_excess = excess / px_h * self.ndc_scale_y.span();
+            Self {
+                ndc_scale_x: self.ndc_scale_x,
+                ndc_scale_y: ContinuousNumericScale {
+                    min: self.ndc_scale_y.min + ndc_excess / 2.0,
+                    max: self.ndc_scale_y.max - ndc_excess / 2.0,
+                },
+                pixel_scale_x: self.pixel_scale_x,
+                pixel_scale_y: ContinuousNumericScale {
+                    min: self.pixel_scale_y.min + excess / 2.0,
+                    max: self.pixel_scale_y.max - excess / 2.0,
+                },
+            }
+        }
+    }
+
     /// Slice the segment along the X axis.
     /// start_frac=0.0 is the left edge, end_frac=1.0 is the right edge.
     pub fn slice_x(&self, start_frac: f64, end_frac: f64) -> Self {
@@ -343,6 +389,9 @@ impl LayoutNode {
 pub struct PlotOutput {
     pub regions: HashMap<RegionKey, Vec<Element>>,
     pub layout: LayoutNode,
+    /// When true, DataArea segments should be squared (equal aspect ratio)
+    /// so that polar coordinate circles render correctly.
+    pub is_polar: bool,
 }
 
 #[cfg(test)]

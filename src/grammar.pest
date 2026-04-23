@@ -8,11 +8,17 @@ statement = {
     geom_statement |
     scale_statement |
     facet_statement |
+    coord_statement |
     title_statement |
     xlabel_statement |
     ylabel_statement |
     caption_statement
 }
+
+// Coordinate System Statement
+coord_statement = { "COORD" ~ coord_type ~ coord_start? }
+coord_type      = { "POLAR" | "CARTESIAN" }
+coord_start     = { "START" ~ number }
 
 // Scale Statement
 scale_statement = { "SCALE" ~ scale_target ~ scale_type }

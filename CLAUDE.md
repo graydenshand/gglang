@@ -24,7 +24,7 @@ Goals:
 
 The parser, compiler, and renderer are connected end-to-end. A `.gg` file and CSV are parsed, compiled into a `Blueprint`, and rendered via wgpu (interactive window) or exported to SVG/PNG (headless). All public API functions return `Result<_, GglangError>` with structured error types via `thiserror`.
 
-Supported features: `GeomPoint`, `GeomLine`, and `GeomBar` with X/Y continuous and discrete scales, `group` aesthetic for partitioning line series, `fill` aesthetic for bar interior color (separate from `color` border), `alpha` aesthetic for transparency control (mapped via `ScaleAlphaContinuous` numeric → [0.1, 1.0] or constant per-layer), color/fill segmentation via `ScaleColorDiscrete` (parameterized for both Color and Fill families, categorical string column → HSL-spaced colors with legend), `StatCount` for automatic frequency counting when Y is unmapped, position adjustments (`STACK`/`DODGE`) for bar grouping, axis tick marks/labels, plot titles/captions/axis labels. Faceting supports two modes: `FACET WRAP :var` (wraps panels into an auto-sized grid, one variable, configurable columns) and `FACET GRID ROWS :r COLS :c` (strict rows×cols matrix from one or two variables, with col labels top, row labels right). Both modes support scale freedom controls: `SCALES FREE/FREE X/FREE Y/FIXED`. Free scales in wrap mode are per-panel; in grid mode, free X scales are shared per column and free Y scales are shared per row. The `Scale` trait has `clone_unfitted()` for creating blank scale copies used by free-scale rendering.
+Supported features: `GeomPoint`, `GeomLine`, and `GeomBar` with X/Y continuous and discrete scales, `group` aesthetic for partitioning line series, `fill` aesthetic for bar interior color (separate from `color` border), `alpha` aesthetic for transparency control (mapped via `ScaleAlphaContinuous` numeric → [0.1, 1.0] or constant per-layer), color/fill segmentation via `ScaleColorDiscrete` (parameterized for both Color and Fill families, categorical string column → HSL-spaced colors with legend), `StatCount` for automatic frequency counting when Y is unmapped, position adjustments (`STACK`/`DODGE`) for bar grouping, axis tick marks/labels, plot titles/captions/axis labels. Faceting supports two modes: `FACET WRAP :var` (wraps panels into an auto-sized grid, one variable, configurable columns) and `FACET GRID ROWS :r COLS :c` (strict rows×cols matrix from one or two variables, with col labels top, row labels right). Both modes support scale freedom controls: `SCALES FREE/FREE X/FREE Y/FIXED`. Free scales in wrap mode are per-panel; in grid mode, free X scales are shared per column and free Y scales are shared per row. The `Scale` trait has `clone_unfitted()` for creating blank scale copies used by free-scale rendering. Polar coordinates via `COORD POLAR` transform bars into arc wedges (rose diagrams), lines into closed radar polygons, and points into polar scatter. Polar axis rendering replaces Cartesian axes with concentric circles and radial spokes inside the data area.
 
 CSV loading auto-detects numeric vs. string columns. A tree-based layout system gives each plot region (data area, axis gutters, title, legend, caption, facet labels, facet col/row labels) its own `WindowSegment`. `RegionKey` (compound `PlotRegion` + optional panel index) enables both single-plot and faceted layouts through the same rendering pipeline. The GPU rendering backend uses three separate pipelines: a general pipeline for rectangles/axes/ticks, an instanced SDF pipeline for anti-aliased points, and a miter-join tessellated pipeline for polylines. A view transform uniform (currently identity) unblocks future pan/zoom. The domain modules (`plot.rs`, `aesthetic.rs`, `column.rs`, `geom.rs`, `scale.rs`, `shape.rs`, `layout.rs`) are fully backend-agnostic — all wgpu/winit types are confined to `frame.rs` and `app.rs`, and SVG/PNG export consumes the same `PlotOutput` without any GPU dependency.
 
@@ -43,8 +43,8 @@ CSV loading auto-detects numeric vs. string columns. A tree-based layout system 
 | `src/column.rs` | `RawColumn` (input), `MappedColumn` (output), `AesData`, `ResolvedData` — data pipeline types |
 | `src/geom.rs` | `Geometry` trait, `GeomPoint`, `GeomLine`, `GeomBar` — layer rendering implementations |
 | `src/scale.rs` | `Scale` trait, `ScalePositionContinuous`, `ScalePositionDiscrete`, `ScaleColorDiscrete`, `StatTransform`, `StatCount`, `default_scale_for()` |
-| `src/plot.rs` | `Blueprint` (builder + render orchestration), `Layer`, `PlotData`, `FacetSpec` |
-| `src/shape.rs` | Domain-level render primitives: `Rectangle`, `Text`, `PolylineData`, `PointData`, `Element` enum. Backend-agnostic |
+| `src/plot.rs` | `Blueprint` (builder + render orchestration), `Layer`, `PlotData`, `FacetSpec`, `CoordinateSystem` |
+| `src/shape.rs` | Domain-level render primitives: `Rectangle`, `Text`, `PolylineData`, `PointData`, `ArcData`, `Element` enum. Backend-agnostic |
 | `src/layout.rs` | Layout system: `Unit`, `WindowSegment` (with `slice_x`/`slice_y`, `px_x`/`px_y`), `PlotRegion`, `LayoutNode`, `SizeSpec`, `SplitAxis`, `PlotOutput`. Backend-agnostic |
 | `src/theme.rs` | `Theme` struct — colors, fonts, sizing for plot chrome |
 | `src/svg.rs` | SVG renderer: `render_svg(&PlotOutput, &Theme, width, height) -> String`. Handles all `Element` types, clip paths, text wrapping |
@@ -126,15 +126,18 @@ FACET WRAP :store SCALES FREE                  // both axes free per panel
 FACET WRAP :store SCALES FREE X                // x free, y shared
 FACET WRAP :store SCALES FREE Y                // y free, x shared
 FACET WRAP :store SCALES FIXED                 // both shared (default)
+COORD POLAR                                    // polar coordinate transform
+COORD POLAR START 1.57                         // polar with angle offset (radians)
+COORD CARTESIAN                                // explicit Cartesian (default)
 TITLE "My plot"
 ```
 
-Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. `SCALE X/Y CONTINUOUS/DISCRETE` overrides auto-detected scale types — string columns auto-select `DISCRETE`, numeric columns auto-select `CONTINUOUS`. `GEOM BAR` supports optional position adjustment (`STACK`/`DODGE`) after attributes: `GEOM BAR { fill=:region } DODGE`. If Y is not mapped, `StatCount` automatically counts occurrences per x category. Faceting splits data into panels; `WRAP` auto-grids one variable, `GRID` creates a strict rows×cols matrix from one or two variables. `SCALES` controls axis sharing (`FREE`/`FREE X`/`FREE Y`/`FIXED`).
+Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; geom-level `{ }` overrides per-layer. `SCALE X/Y CONTINUOUS/DISCRETE` overrides auto-detected scale types — string columns auto-select `DISCRETE`, numeric columns auto-select `CONTINUOUS`. `GEOM BAR` supports optional position adjustment (`STACK`/`DODGE`) after attributes: `GEOM BAR { fill=:region } DODGE`. If Y is not mapped, `StatCount` automatically counts occurrences per x category. Faceting splits data into panels; `WRAP` auto-grids one variable, `GRID` creates a strict rows×cols matrix from one or two variables. `SCALES` controls axis sharing (`FREE`/`FREE X`/`FREE Y`/`FIXED`). `COORD POLAR` transforms the coordinate system: X maps to angle, Y maps to radius. Bars become arc wedges (rose diagrams), lines become closed polygons (radar charts), points are repositioned in polar space. Optional `START` parameter sets the angular offset in radians.
 
 ## Key architectural decisions
 
 - **Theme is borrowed, not owned** by `Blueprint` — themes affect things beyond the plot scope (window margin, background) and may be shared across multiple plots.
-- **`Element` enum** (`Rect | Point | Polyline | Text`) unifies geometry at the render boundary. All variants carry domain-level data (positions in `Unit` coords); `Frame` converts them to GPU-specific formats, `render_svg()` converts to SVG elements.
+- **`Element` enum** (`Rect | Point | Polyline | Text | Arc`) unifies geometry at the render boundary. All variants carry domain-level data (positions in `Unit` coords); `Frame` converts them to GPU-specific formats, `render_svg()` converts to SVG elements.
 - **`Mapping` is a struct** `{ aesthetic: Aesthetic, variable: String }` — extensible to any aesthetic channel. `Aesthetic` and `AestheticFamily` are enums, not traits.
 - **Split data pipeline types**: `RawColumn` (input: `FloatArray`/`IntArray`/`StringArray`) and `MappedColumn` (output: `UnitArray`/`ColorArray`/`FloatArray`). `AesData` (`HashMap<Aesthetic, RawColumn>`) is produced by the column-rename step; `ResolvedData` (`mapped: HashMap<Aesthetic, MappedColumn>`, `raw: HashMap<Aesthetic, RawColumn>`) is produced by bulk scale mapping and passed to `Geometry::render()`. `PlotData` (`HashMap<String, RawColumn>`) remains the CSV boundary type. `Scale::map()` takes `&RawColumn → Result<MappedColumn>`, eliminating in-geom scale lookups.
 - **Fill vs Color aesthetics**: `Fill` controls interior color (bars), `Color` controls border/stroke. `ScaleColorDiscrete` is parameterized with an `AestheticFamily` field to serve both `Color` and `Fill` families. `default_scale_for(Aesthetic::Fill)` returns a fill-flavored instance.
@@ -142,12 +145,11 @@ Data variables are referenced with `:` prefix. `MAP` sets plot-level defaults; g
 - **StatCount transform**: When `GeomBar` has no Y mapping, the compiler assigns `StatCount` which groups by X (and optionally Fill) to produce frequency counts. `GeomBar::update_scales()` creates a Y continuous scale if none exists after stat transform, and feeds cumulative stacked totals to ensure the Y domain covers full stack height.
 - **Position adjustments**: `BarPosition` enum (`Stack`/`Dodge`) on `GeomBar`. Grammar: `GEOM BAR DODGE`. Stacking computes NDC offsets using `ndc_per_unit` (slope of the linear Y scale mapping) to stack segments correctly in NDC space.
 - **Faceting uses `FacetSpec` enum** (`Wrap { variable, columns, scales }` | `Grid { row_var, col_var, scales }`), stored as `Option<FacetSpec>` on Blueprint. `ScaleFreedom` enum (`Fixed | FreeX | FreeY | Free`) controls axis sharing. `Scale::clone_unfitted()` creates blank copies for per-panel or per-row/column scale instances.
+- **Polar coordinates**: `CoordinateSystem` enum (`Cartesian`/`Polar { start_angle }`) on Blueprint. Transform is applied after `geometry.render()` produces elements but before they're added to the DataArea region. `Element::Rect` → `Element::Arc` (wedge), `Element::Polyline` points are remapped and polygon is closed, `Element::Point` positions are remapped. Polar axes (concentric circles, radial spokes, angular labels) render into DataArea instead of axis gutters. `polar_plot_layout()` omits axis gutter regions.
+- **`Element::Arc` (ArcData)**: Domain-level arc/wedge primitive with center, inner/outer radius, start/end angle, color. SVG renders via `<path>` with arc commands (handles full-circle and annular cases). GPU tessellates into triangle fan (pie) or quad strip (annulus).
 - **SVG/PNG exporters are backend-agnostic** — they consume the same `PlotOutput` as the GPU renderer and use `WindowSegment::px_*()` methods for coordinate conversion. PNG export works by rendering to SVG first, then rasterizing via `resvg`.
 
 ## Issues and project planning
-
-Open issues in `proj/issues/`:
-- `snapshot_testing.md` — SVG-based regression testing framework
 
 Active work tracked in `proj/roadmap.md`. Stories in `proj/stories/`.
 
@@ -173,3 +175,25 @@ open /tmp/test.svg    # preview in browser/viewer
 ```
 
 SVG is best for quick iteration (instant export, inspectable markup). PNG is useful for final output or when you need rasterized pixels. Default dimensions are 2400x1800; use `--width`/`--height` to adjust.
+
+## Testing
+
+Snapshot tests live in `tests/svg_snapshots.rs` and use [insta](https://insta.rs/). Each test renders an example `.gg` + `.csv` pair from `examples/` to SVG at 1200x900 and compares against the stored snapshot in `tests/snapshots/`.
+
+```bash
+cargo test                                  # run all snapshot tests
+cargo test --test svg_snapshots scatter     # run a single test
+cargo insta test --review                   # run tests and review diffs in one step
+cargo insta review                          # review pending .snap.new files from a prior failed run
+```
+
+**Important:** `cargo insta review` only has work to do when a test *fails* (pending `.snap.new` file). If `cargo test` reports all passing, there are no snapshots to review — "no snapshots to review" is the expected output. Use `cargo insta test --review` if you want the combined run-then-review flow.
+
+Adding a new snapshot test:
+
+1. Drop the new example pair into `examples/` (e.g. `examples/pie.gg`, `examples/pie.csv`).
+2. Add a `snapshot_test!(name, "file.gg", "file.csv");` line at the bottom of `tests/svg_snapshots.rs`.
+3. Run `cargo test` — the first run fails and creates `tests/snapshots/svg_snapshots__name.snap.new`.
+4. Run `cargo insta review` to accept it, which promotes the `.snap.new` to `.snap` (commit both the snapshot and the example files).
+
+When rendering output changes intentionally (new features, layout tweaks), `cargo test` will fail on the affected snapshots; run `cargo insta review` to accept the new SVG output. Any unintentional diff across other snapshots is a regression — investigate before accepting.

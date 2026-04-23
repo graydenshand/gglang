@@ -6,7 +6,16 @@ use crate::theme::Theme;
 pub fn render_svg(output: &PlotOutput, theme: &Theme, width: u32, height: u32) -> String {
     let root = WindowSegment::new_root(width, height);
     let margined = root.with_margin(theme.window_margin);
-    let segments = output.layout.resolve(&margined);
+    let mut segments = output.layout.resolve(&margined);
+
+    // For polar plots, square up DataArea segments so circles aren't distorted.
+    if output.is_polar {
+        for (key, seg) in segments.iter_mut() {
+            if key.region == PlotRegion::DataArea {
+                *seg = seg.squared();
+            }
+        }
+    }
 
     // Pair each region with its resolved segment (drop any regions not in the layout).
     let mut regions: Vec<_> = output
@@ -124,6 +133,60 @@ fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment) {
                     svg.push_str(&format!(
                         "  <line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{:.2}\"/>\n",
                         pl.thickness
+                    ));
+                }
+            }
+        }
+
+        Element::Arc(arc) => {
+            let cx = seg.px_x(&arc.center[0]);
+            let cy = seg.px_y(&arc.center[1]);
+            let r_outer = seg.px_width(&arc.outer_radius);
+            let r_inner = seg.px_width(&arc.inner_radius);
+            let fill = rgba_to_css(arc.color);
+
+            let sweep = arc.end_angle - arc.start_angle;
+            if sweep.abs() >= std::f32::consts::TAU - 0.001 {
+                // Full circle — SVG arcs can't draw a full circle in one command,
+                // so draw two semicircles.
+                if r_inner <= 0.5 {
+                    // Simple filled circle
+                    svg.push_str(&format!(
+                        "  <circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r_outer:.2}\" fill=\"{fill}\"/>\n"
+                    ));
+                } else {
+                    // Full annulus — two half-arcs for outer, two for inner
+                    let mid = arc.start_angle + std::f32::consts::PI;
+                    let (x1o, y1o) = (cx + r_outer * arc.start_angle.cos(), cy - r_outer * arc.start_angle.sin());
+                    let (x2o, y2o) = (cx + r_outer * mid.cos(), cy - r_outer * mid.sin());
+                    let (x1i, y1i) = (cx + r_inner * arc.start_angle.cos(), cy - r_inner * arc.start_angle.sin());
+                    let (x2i, y2i) = (cx + r_inner * mid.cos(), cy - r_inner * mid.sin());
+                    svg.push_str(&format!(
+                        "  <path d=\"M {x1o:.2} {y1o:.2} A {r_outer:.2} {r_outer:.2} 0 0 0 {x2o:.2} {y2o:.2} A {r_outer:.2} {r_outer:.2} 0 0 0 {x1o:.2} {y1o:.2} M {x1i:.2} {y1i:.2} A {r_inner:.2} {r_inner:.2} 0 0 1 {x2i:.2} {y2i:.2} A {r_inner:.2} {r_inner:.2} 0 0 1 {x1i:.2} {y1i:.2} Z\" fill=\"{fill}\" fill-rule=\"evenodd\"/>\n"
+                    ));
+                }
+            } else {
+                // Partial arc wedge
+                let large_arc = if sweep.abs() > std::f32::consts::PI { 1 } else { 0 };
+                // SVG Y is flipped (down = positive), so negate sin for Y
+                let x_start_o = cx + r_outer * arc.start_angle.cos();
+                let y_start_o = cy - r_outer * arc.start_angle.sin();
+                let x_end_o = cx + r_outer * arc.end_angle.cos();
+                let y_end_o = cy - r_outer * arc.end_angle.sin();
+
+                if r_inner <= 0.5 {
+                    // Pie wedge (from center)
+                    svg.push_str(&format!(
+                        "  <path d=\"M {cx:.2} {cy:.2} L {x_start_o:.2} {y_start_o:.2} A {r_outer:.2} {r_outer:.2} 0 {large_arc} 0 {x_end_o:.2} {y_end_o:.2} Z\" fill=\"{fill}\"/>\n"
+                    ));
+                } else {
+                    // Annular wedge (donut segment)
+                    let x_start_i = cx + r_inner * arc.end_angle.cos();
+                    let y_start_i = cy - r_inner * arc.end_angle.sin();
+                    let x_end_i = cx + r_inner * arc.start_angle.cos();
+                    let y_end_i = cy - r_inner * arc.start_angle.sin();
+                    svg.push_str(&format!(
+                        "  <path d=\"M {x_start_o:.2} {y_start_o:.2} A {r_outer:.2} {r_outer:.2} 0 {large_arc} 0 {x_end_o:.2} {y_end_o:.2} L {x_start_i:.2} {y_start_i:.2} A {r_inner:.2} {r_inner:.2} 0 {large_arc} 1 {x_end_i:.2} {y_end_i:.2} Z\" fill=\"{fill}\"/>\n"
                     ));
                 }
             }
