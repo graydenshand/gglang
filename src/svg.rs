@@ -209,13 +209,20 @@ fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment) {
                 TextRotation::Ccw90 => format!(" transform=\"rotate(-90,{x:.2},{y:.2})\""),
                 TextRotation::Cw90 => format!(" transform=\"rotate(90,{x:.2},{y:.2})\""),
             };
+            let [r, g, b, a] = t.color;
+            let fill_attr = format!(
+                " fill=\"#{:02x}{:02x}{:02x}\" fill-opacity=\"{a:.3}\"",
+                (r * 255.0) as u8,
+                (g * 255.0) as u8,
+                (b * 255.0) as u8,
+            );
 
             if t.wrap && t.rotation == TextRotation::None {
                 let max_width = seg.pixel_scale_x.span() as f32 * 0.95;
                 let lines = wrap_text(&t.value, max_width, t.font_size);
                 let line_height = t.font_size * 1.2;
                 svg.push_str(&format!(
-                    "  <text x=\"{x:.2}\" y=\"{y:.2}\" font-size=\"{}\" font-family=\"sans-serif\" text-anchor=\"{text_anchor}\" dominant-baseline=\"{dominant_baseline}\"{transform_attr}>\n",
+                    "  <text x=\"{x:.2}\" y=\"{y:.2}\" font-size=\"{}\" font-family=\"sans-serif\" text-anchor=\"{text_anchor}\" dominant-baseline=\"{dominant_baseline}\"{fill_attr}{transform_attr}>\n",
                     t.font_size
                 ));
                 for (i, line) in lines.iter().enumerate() {
@@ -229,7 +236,7 @@ fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment) {
             } else {
                 let escaped = escape_xml(&t.value);
                 svg.push_str(&format!(
-                    "  <text x=\"{x:.2}\" y=\"{y:.2}\" font-size=\"{}\" font-family=\"sans-serif\" text-anchor=\"{text_anchor}\" dominant-baseline=\"{dominant_baseline}\"{transform_attr}>{escaped}</text>\n",
+                    "  <text x=\"{x:.2}\" y=\"{y:.2}\" font-size=\"{}\" font-family=\"sans-serif\" text-anchor=\"{text_anchor}\" dominant-baseline=\"{dominant_baseline}\"{fill_attr}{transform_attr}>{escaped}</text>\n",
                     t.font_size
                 ));
             }

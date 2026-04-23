@@ -12,7 +12,7 @@ expression: svg
   <clipPath id="cp4"><rect x="-9.00" y="113.00" width="104.00" height="684.00"/></clipPath>
 </defs>
 <g clip-path="url(#cp0)">
-  <text x="600.00" y="860.00" font-size="28" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+  <text x="600.00" y="860.00" font-size="28" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
     <tspan x="600.00" dy="0.0">Created by Grayden Shand &lt;graydenshand at gmail dot com&gt; March 11 2026</tspan>
     <tspan x="600.00" dy="33.6">using gglang. This plot contains made up data, inspired by the famous</tspan>
     <tspan x="600.00" dy="33.6">iris dataset.</tspan>
@@ -27,36 +27,36 @@ expression: svg
   <circle cx="887.73" cy="555.00" r="8.00" fill="rgba(0,0,0,1.0000)"/>
 </g>
 <g clip-path="url(#cp2)">
-  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
     <tspan x="600.00" dy="0.0">Iris Sepal Dimensions</tspan>
   </text>
 </g>
 <g clip-path="url(#cp3)">
   <rect x="95.00" y="784.50" width="1090.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
   <rect x="144.05" y="782.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="144.55" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">0</text>
+  <text x="144.55" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">0</text>
   <rect x="391.77" y="782.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="392.27" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">2</text>
+  <text x="392.27" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">2</text>
   <rect x="639.50" y="782.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="640.00" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">4</text>
+  <text x="640.00" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">4</text>
   <rect x="887.23" y="782.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="887.73" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">6</text>
+  <text x="887.73" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">6</text>
   <rect x="1134.95" y="782.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="1135.45" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">8</text>
-  <text x="640.00" y="810.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+  <text x="1135.45" y="790.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">8</text>
+  <text x="640.00" y="810.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
     <tspan x="640.00" dy="0.0">Sepal width</tspan>
   </text>
 </g>
 <g clip-path="url(#cp4)">
   <rect x="94.50" y="125.00" width="1.00" height="660.00" fill="rgba(179,179,179,1.0000)"/>
   <rect x="92.00" y="754.50" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="755.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">2</text>
+  <text x="83.00" y="755.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">2</text>
   <rect x="92.00" y="554.50" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="555.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">4</text>
+  <text x="83.00" y="555.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">4</text>
   <rect x="92.00" y="354.50" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="355.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">6</text>
+  <text x="83.00" y="355.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">6</text>
   <rect x="92.00" y="154.50" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="155.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">8</text>
-  <text x="35.00" y="455.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,35.00,455.00)">Sepal length</text>
+  <text x="83.00" y="155.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">8</text>
+  <text x="35.00" y="455.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,455.00)">Sepal length</text>
 </g>
 </svg>

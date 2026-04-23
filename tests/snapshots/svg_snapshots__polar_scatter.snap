@@ -23,22 +23,22 @@ expression: svg
   <polyline points="815.00,505.00 813.44,473.34 808.79,441.99 801.09,411.24 790.41,381.39 776.86,352.74 760.56,325.55 741.68,300.09 720.40,276.60 696.91,255.32 671.45,236.44 644.26,220.14 615.61,206.59 585.76,195.91 555.01,188.21 523.66,183.56 492.00,182.00 460.34,183.56 428.99,188.21 398.24,195.91 368.39,206.59 339.74,220.14 312.55,236.44 287.09,255.32 263.60,276.60 242.32,300.09 223.44,325.55 207.14,352.74 193.59,381.39 182.91,411.24 175.21,441.99 170.56,473.34 169.00,505.00 170.56,536.66 175.21,568.01 182.91,598.76 193.59,628.61 207.14,657.26 223.44,684.45 242.32,709.91 263.60,733.40 287.09,754.68 312.55,773.56 339.74,789.86 368.39,803.41 398.24,814.09 428.99,821.79 460.34,826.44 492.00,828.00 523.66,826.44 555.01,821.79 585.76,814.09 615.61,803.41 644.26,789.86 671.45,773.56 696.91,754.68 720.40,733.40 741.68,709.91 760.56,684.45 776.86,657.26 790.41,628.61 801.09,598.76 808.79,568.01 813.44,536.66 815.00,505.00" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
   <polyline points="492.00,505.00 492.00,828.00" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
   <polyline points="492.00,505.00 583.00,195.08" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
-  <text x="593.71" y="158.62" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">0</text>
+  <text x="593.71" y="158.62" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000">0</text>
   <polyline points="492.00,505.00 811.71,550.97" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
-  <text x="849.33" y="556.38" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">2</text>
+  <text x="849.33" y="556.38" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000">2</text>
   <polyline points="492.00,505.00 492.00,828.00" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
-  <text x="492.00" y="866.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">4</text>
+  <text x="492.00" y="866.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000">4</text>
   <polyline points="492.00,505.00 172.29,550.97" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
-  <text x="134.67" y="556.38" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">6</text>
+  <text x="134.67" y="556.38" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000">6</text>
   <polyline points="492.00,505.00 401.00,195.08" stroke="rgba(217,217,217,1.0000)" stroke-width="1.00" fill="none" stroke-linejoin="miter"/>
-  <text x="390.29" y="158.62" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">8</text>
+  <text x="390.29" y="158.62" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000">8</text>
 </g>
 <g clip-path="url(#cp1)">
   <rect x="998.00" y="232.00" width="14.00" height="14.00" fill="rgba(215,66,66,1.0000)"/>
-  <text x="1029.00" y="239.00" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central">setosa</text>
+  <text x="1029.00" y="239.00" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">setosa</text>
   <rect x="998.00" y="300.40" width="14.00" height="14.00" fill="rgba(66,215,66,1.0000)"/>
-  <text x="1029.00" y="307.40" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central">versicolor</text>
+  <text x="1029.00" y="307.40" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">versicolor</text>
   <rect x="998.00" y="368.80" width="14.00" height="14.00" fill="rgba(66,66,215,1.0000)"/>
-  <text x="1029.00" y="375.80" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central">virginica</text>
+  <text x="1029.00" y="375.80" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">virginica</text>
 </g>
 </svg>

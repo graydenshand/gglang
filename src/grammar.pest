@@ -41,7 +41,7 @@ ylabel_statement = { "YLABEL" ~ string_literal }
 map_statement = { "MAP" ~ data_mappings }
 data_mappings = { data_mapping ~ ("," ~ data_mapping)* }
 data_mapping = { aesthetic ~ "=" ~ data_reference }
-aesthetic = { "x" | "y" | "color" | "fill" | "group" | "alpha" }
+aesthetic = { "x" | "y" | "color" | "fill" | "group" | "alpha" | "label" }
 data_reference = { ":" ~ identifier }
 
 // Geometry Statement
@@ -50,7 +50,7 @@ position_adjustment = { "STACK" | "DODGE" }
 geom_attributes = { "{" ~ geom_attribute ~ ("," ~ geom_attribute)* ~ "}" }
 geom_attribute = { aesthetic ~ "=" ~ attribute_value }
 attribute_value = { data_reference | string_literal | number }
-geometry_type = { "POINT" | "LINE" | "BAR" }
+geometry_type = { "POINT" | "LINE" | "BAR" | "TEXT" }
 
 // Facet Statement
 facet_statement = { "FACET" ~ (facet_wrap | facet_grid) }

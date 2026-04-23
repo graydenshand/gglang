@@ -59,6 +59,7 @@ pub struct Text {
     pub v_align: VAlign,
     pub rotation: TextRotation,
     pub wrap: bool,
+    pub color: [f32; 4],
 }
 impl Text {
     pub fn new(value: String, font_size: f32, position: (Unit, Unit)) -> Self {
@@ -70,6 +71,7 @@ impl Text {
             v_align: VAlign::Top,
             rotation: TextRotation::None,
             wrap: false,
+            color: [0.0, 0.0, 0.0, 1.0],
         }
     }
 
@@ -82,7 +84,13 @@ impl Text {
             v_align: VAlign::Top,
             rotation: TextRotation::None,
             wrap: false,
+            color: [0.0, 0.0, 0.0, 1.0],
         }
+    }
+
+    pub fn with_color(mut self, color: [f32; 4]) -> Self {
+        self.color = color;
+        self
     }
 
     pub fn with_wrap(mut self) -> Self {

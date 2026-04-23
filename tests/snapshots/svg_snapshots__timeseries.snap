@@ -39,45 +39,45 @@ expression: svg
 </g>
 <g clip-path="url(#cp1)">
   <rect x="998.00" y="224.50" width="14.00" height="14.00" fill="rgba(215,66,66,1.0000)"/>
-  <text x="1029.00" y="231.50" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central">AAPL</text>
+  <text x="1029.00" y="231.50" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">AAPL</text>
   <rect x="998.00" y="288.40" width="14.00" height="14.00" fill="rgba(66,215,66,1.0000)"/>
-  <text x="1029.00" y="295.40" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central">GOOG</text>
+  <text x="1029.00" y="295.40" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">GOOG</text>
   <rect x="998.00" y="352.30" width="14.00" height="14.00" fill="rgba(66,66,215,1.0000)"/>
-  <text x="1029.00" y="359.30" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central">MSFT</text>
+  <text x="1029.00" y="359.30" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">MSFT</text>
 </g>
 <g clip-path="url(#cp2)">
-  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
     <tspan x="600.00" dy="0.0">Stock Prices</tspan>
   </text>
 </g>
 <g clip-path="url(#cp3)">
   <rect x="95.00" y="834.50" width="874.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
   <rect x="134.23" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="134.73" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">0</text>
+  <text x="134.73" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">0</text>
   <rect x="332.86" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="333.36" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">2</text>
+  <text x="333.36" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">2</text>
   <rect x="531.50" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="532.00" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">4</text>
+  <text x="532.00" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">4</text>
   <rect x="730.14" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="730.64" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">6</text>
+  <text x="730.64" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">6</text>
   <rect x="928.77" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="929.27" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">8</text>
-  <text x="532.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging">
+  <text x="929.27" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">8</text>
+  <text x="532.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
     <tspan x="532.00" dy="0.0">Day</tspan>
   </text>
 </g>
 <g clip-path="url(#cp4)">
   <rect x="94.50" y="125.00" width="1.00" height="710.00" fill="rgba(179,179,179,1.0000)"/>
   <rect x="92.00" y="802.23" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="802.73" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">50</text>
+  <text x="83.00" y="802.73" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">50</text>
   <rect x="92.00" y="640.86" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="641.36" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">100</text>
+  <text x="83.00" y="641.36" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">100</text>
   <rect x="92.00" y="479.50" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="480.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">150</text>
+  <text x="83.00" y="480.00" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">150</text>
   <rect x="92.00" y="318.14" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="318.64" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">200</text>
+  <text x="83.00" y="318.64" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">200</text>
   <rect x="92.00" y="156.77" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
-  <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central">250</text>
-  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,35.00,480.00)">Price</text>
+  <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">250</text>
+  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,480.00)">Price</text>
 </g>
 </svg>

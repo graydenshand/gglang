@@ -212,11 +212,16 @@ fn text_to_section<'a>(
     } else {
         (f32::INFINITY, f32::INFINITY)
     };
+    let [r, g, b, a] = text.color;
     wgpu_text::glyph_brush::Section::default()
         .with_screen_position(position)
         .with_bounds(bounds)
         .with_layout(layout)
-        .add_text(wgpu_text::glyph_brush::Text::new(&text.value).with_scale(text.font_size))
+        .add_text(
+            wgpu_text::glyph_brush::Text::new(&text.value)
+                .with_scale(text.font_size)
+                .with_color([r, g, b, a]),
+        )
 }
 
 /// Build an orthographic projection matrix for a given text rotation.

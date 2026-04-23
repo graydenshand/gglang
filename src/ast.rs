@@ -79,6 +79,7 @@ pub enum AstAesthetic {
     Fill,
     Group,
     Alpha,
+    Label,
 }
 
 #[derive(Debug)]
@@ -86,6 +87,7 @@ pub enum GeometryType {
     Point,
     Line,
     Bar,
+    Text,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +190,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "fill" => AstAesthetic::Fill,
                                             "group" => AstAesthetic::Group,
                                             "alpha" => AstAesthetic::Alpha,
+                                            "label" => AstAesthetic::Label,
                                             other => {
                                                 return Err(GglangError::Parse {
                                                     message: format!(
@@ -214,6 +217,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             "POINT" => GeometryType::Point,
                             "LINE" => GeometryType::Line,
                             "BAR" => GeometryType::Bar,
+                            "TEXT" => GeometryType::Text,
                             other => {
                                 return Err(GglangError::Parse {
                                     message: format!("Unsupported geometry: {}", other),
@@ -247,6 +251,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "fill" => AstAesthetic::Fill,
                                             "group" => AstAesthetic::Group,
                                             "alpha" => AstAesthetic::Alpha,
+                                            "label" => AstAesthetic::Label,
                                             other => {
                                                 return Err(GglangError::Parse {
                                                     message: format!(

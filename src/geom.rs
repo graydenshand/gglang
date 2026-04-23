@@ -5,7 +5,7 @@ use crate::column::{AesData, MappedColumn, RawColumn, ResolvedData};
 use crate::error::GglangError;
 use crate::layout::Unit;
 use crate::scale::{Axis, IdentityTransform, Scale, ScalePositionContinuous, StatTransform};
-use crate::shape::{Element, PointData, PolylineData, Rectangle};
+use crate::shape::{Element, HAlign, PointData, PolylineData, Rectangle, Text, VAlign};
 
 /// A geometry converts transformed data into graphical elements.
 ///
@@ -568,5 +568,84 @@ impl Geometry for GeomBar {
         }
 
         Ok(())
+    }
+}
+
+/// GeomText renders text labels at mapped (x, y) positions.
+///
+/// Required aesthetics: `x`, `y`, `label`
+///
+/// Extra aesthetics: `color`, `alpha`
+pub struct GeomText {
+    pub font_size: f32,
+}
+
+impl Geometry for GeomText {
+    fn required_aesthetics(&self) -> Vec<Aesthetic> {
+        vec![Aesthetic::X, Aesthetic::Y, Aesthetic::Label]
+    }
+
+    fn extra_aesthetics(&self) -> Vec<Aesthetic> {
+        vec![Aesthetic::Color, Aesthetic::Alpha]
+    }
+
+    fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
+        let x_mapped = match data.mapped.get(&Aesthetic::X).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic X".to_string(),
+        })? {
+            MappedColumn::UnitArray(v) => v,
+            _ => return Err(GglangError::Render {
+                message: "Expected UnitArray from X position scale".to_string(),
+            }),
+        };
+        let y_mapped = match data.mapped.get(&Aesthetic::Y).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic Y".to_string(),
+        })? {
+            MappedColumn::UnitArray(v) => v,
+            _ => return Err(GglangError::Render {
+                message: "Expected UnitArray from Y position scale".to_string(),
+            }),
+        };
+
+        let labels: Vec<String> = match data.raw.get(&Aesthetic::Label).ok_or_else(|| GglangError::Render {
+            message: "Missing required aesthetic label".to_string(),
+        })? {
+            RawColumn::StringArray(v) => v.clone(),
+            other => other
+                .as_f64()
+                .map(|nums| nums.iter().map(|f| f.to_string()).collect())
+                .map_err(|_| GglangError::Render {
+                    message: "Label aesthetic must be a string or numeric column".to_string(),
+                })?,
+        };
+
+        let colors: Option<&Vec<[f32; 3]>> = match data.mapped.get(&Aesthetic::Color) {
+            Some(MappedColumn::ColorArray(v)) => Some(v),
+            Some(_) => return Err(GglangError::Render {
+                message: "Expected ColorArray from color scale".to_string(),
+            }),
+            None => None,
+        };
+
+        let n = x_mapped.len();
+        let alphas = get_alpha(data, n);
+        let mut elements = Vec::with_capacity(n);
+        for i in 0..n {
+            let color = colors.map_or([0.0, 0.0, 0.0, alphas[i]], |c| {
+                let [r, g, b] = c[i];
+                [r, g, b, alphas[i]]
+            });
+            elements.push(Element::Text(
+                Text::new(
+                    labels[i].clone(),
+                    self.font_size,
+                    (x_mapped[i], y_mapped[i]),
+                )
+                .with_h_align(HAlign::Center)
+                .with_v_align(VAlign::Center)
+                .with_color(color),
+            ));
+        }
+        Ok(elements)
     }
 }

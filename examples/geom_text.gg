@@ -1,0 +1,4 @@
+MAP x=:x, y=:y, label=:species
+GEOM POINT { alpha=0.4 }
+GEOM TEXT { color="#333333" }
+TITLE "Iris species labels"

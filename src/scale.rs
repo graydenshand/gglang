@@ -756,6 +756,7 @@ pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -
         Aesthetic::Fill => Some(Box::new(ScaleColorDiscrete::new_fill())),
         Aesthetic::Group => None,
         Aesthetic::Alpha => Some(Box::new(ScaleAlphaContinuous::new())),
+        Aesthetic::Label => None,
     }
 }
 

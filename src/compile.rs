@@ -1,7 +1,7 @@
 use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
 use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement};
 use crate::error::GglangError;
-use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint};
+use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint, GeomText};
 use crate::plot::{Blueprint, CoordinateSystem, Layer};
 use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
 use crate::theme::Theme;
@@ -15,6 +15,7 @@ fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
         AstAesthetic::Fill => Aesthetic::Fill,
         AstAesthetic::Group => Aesthetic::Group,
         AstAesthetic::Alpha => Aesthetic::Alpha,
+        AstAesthetic::Label => Aesthetic::Label,
     }
 }
 
@@ -72,6 +73,7 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
                 let (geom, stat): (Box<dyn crate::geom::Geometry>, Box<dyn crate::scale::StatTransform>) = match geom_type {
                     GeometryType::Point => (Box::new(GeomPoint), Box::new(IdentityTransform)),
                     GeometryType::Line => (Box::new(GeomLine), Box::new(IdentityTransform)),
+                    GeometryType::Text => (Box::new(GeomText { font_size: 24.0 }), Box::new(IdentityTransform)),
                     GeometryType::Bar => {
                         let bar_position = match position {
                             Some(PositionAdjustment::Dodge) => BarPosition::Dodge,

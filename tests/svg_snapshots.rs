@@ -49,3 +49,4 @@ snapshot_test!(bar_dodge_count, "bar_dodge_count.gg", "bar_data.csv");
 snapshot_test!(pie, "pie.gg", "pie.csv");
 snapshot_test!(radar, "radar.gg", "radar.csv");
 snapshot_test!(polar_scatter, "polar_scatter.gg", "iris-mock.csv");
+snapshot_test!(geom_text, "geom_text.gg", "iris-mock.csv");

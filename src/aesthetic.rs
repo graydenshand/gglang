@@ -7,6 +7,7 @@ pub enum Aesthetic {
     Fill,
     Group,
     Alpha,
+    Label,
 }
 
 impl Aesthetic {
@@ -18,6 +19,7 @@ impl Aesthetic {
             Aesthetic::Fill,
             Aesthetic::Group,
             Aesthetic::Alpha,
+            Aesthetic::Label,
         ]
     }
 
@@ -29,6 +31,7 @@ impl Aesthetic {
             Aesthetic::Fill => AestheticFamily::Fill,
             Aesthetic::Group => AestheticFamily::Group,
             Aesthetic::Alpha => AestheticFamily::Alpha,
+            Aesthetic::Label => AestheticFamily::Label,
         }
     }
 
@@ -40,6 +43,7 @@ impl Aesthetic {
             Aesthetic::Fill => "fill",
             Aesthetic::Group => "group",
             Aesthetic::Alpha => "alpha",
+            Aesthetic::Label => "label",
         }
     }
 }
@@ -53,6 +57,7 @@ pub enum AestheticFamily {
     Fill,
     Group,
     Alpha,
+    Label,
 }
 
 /// A mapping from a data variable to an aesthetic channel.

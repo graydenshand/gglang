@@ -17,10 +17,16 @@ expression: svg
   <circle cx="1011.59" cy="157.27" r="8.00" fill="rgba(0,0,0,0.4000)"/>
   <circle cx="392.27" cy="372.42" r="8.00" fill="rgba(0,0,0,0.4000)"/>
   <circle cx="887.73" cy="587.58" r="8.00" fill="rgba(0,0,0,0.4000)"/>
+  <text x="268.41" y="802.73" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#333333" fill-opacity="1.000">setosa</text>
+  <text x="516.14" y="480.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#333333" fill-opacity="1.000">versicolor</text>
+  <text x="763.86" y="695.15" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#333333" fill-opacity="1.000">setosa</text>
+  <text x="1011.59" y="157.27" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#333333" fill-opacity="1.000">virginica</text>
+  <text x="392.27" y="372.42" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#333333" fill-opacity="1.000">versicolor</text>
+  <text x="887.73" y="587.58" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#333333" fill-opacity="1.000">virginica</text>
 </g>
 <g clip-path="url(#cp1)">
   <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
-    <tspan x="600.00" dy="0.0">Constant alpha=0.4</tspan>
+    <tspan x="600.00" dy="0.0">Iris species labels</tspan>
   </text>
 </g>
 <g clip-path="url(#cp2)">
@@ -36,7 +42,7 @@ expression: svg
   <rect x="1134.95" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
   <text x="1135.45" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">8</text>
   <text x="640.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
-    <tspan x="640.00" dy="0.0">X</tspan>
+    <tspan x="640.00" dy="0.0">x</tspan>
   </text>
 </g>
 <g clip-path="url(#cp3)">
@@ -49,6 +55,6 @@ expression: svg
   <text x="83.00" y="372.42" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">6</text>
   <rect x="92.00" y="156.77" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
   <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">8</text>
-  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,480.00)">Y</text>
+  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,480.00)">y</text>
 </g>
 </svg>
