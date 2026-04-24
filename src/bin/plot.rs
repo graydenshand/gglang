@@ -8,10 +8,11 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let source = std::fs::read_to_string(&args[1])?;
+    let script_path = std::path::Path::new(&args[1]);
+    let base_dir = script_path.parent();
+    let source = std::fs::read_to_string(script_path)?;
     let program = ggc::ast::parse(&source)?;
-    let theme = ggc::theme::Theme::default();
-    let mut blueprint = ggc::compile::compile(&program, &theme)?;
+    let mut blueprint = ggc::compile::compile(&program, &ggc::theme::Theme::default(), base_dir)?;
     let data = ggc::data::load_csv(std::path::Path::new(&args[2]))?;
 
     let flag_val = |flag: &str| -> Option<String> {
@@ -30,12 +31,13 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(path) = output_path {
         let plot_output = blueprint.render(data)?;
+        let theme = blueprint.theme();
         if path.ends_with(".svg") {
-            let svg = ggc::svg::render_svg(&plot_output, &theme, width, height);
+            let svg = ggc::svg::render_svg(&plot_output, theme, width, height);
             std::fs::write(&path, svg)?;
             println!("Wrote {path}");
         } else if path.ends_with(".png") {
-            let png = ggc::png::render_png(&plot_output, &theme, width, height)?;
+            let png = ggc::png::render_png(&plot_output, theme, width, height)?;
             std::fs::write(&path, png)?;
             println!("Wrote {path}");
         } else {

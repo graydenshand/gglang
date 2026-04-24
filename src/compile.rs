@@ -1,11 +1,12 @@
 use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
-use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement};
+use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement, ThemeStatement};
 use crate::error::GglangError;
 use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint, GeomText};
 use crate::plot::{Blueprint, CoordinateSystem, Layer};
 use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
 use crate::theme::Theme;
 use std::collections::HashMap;
+use std::path::Path;
 
 fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
     match aes {
@@ -19,7 +20,20 @@ fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
     }
 }
 
-pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>, GglangError> {
+pub fn compile(
+    program: &Program,
+    theme: &Theme,
+    base_dir: Option<&Path>,
+) -> Result<Blueprint, GglangError> {
+    let mut theme = theme.clone();
+
+    // First pass: apply all THEME statements so the theme is ready before Blueprint is built.
+    for stmt in &program.statements {
+        if let Statement::Theme(ts) = stmt {
+            apply_theme_statement(&mut theme, ts, base_dir)?;
+        }
+    }
+
     let mut bp = Blueprint::new(theme);
     let mut mappings: Vec<Mapping> = vec![];
     let mut mapped_aesthetics: Vec<Aesthetic> = vec![];
@@ -125,6 +139,7 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
             Statement::Caption(s) => bp = bp.with_caption(s.clone()),
             Statement::XLabel(s) => bp = bp.with_x_label(s.clone()),
             Statement::YLabel(s) => bp = bp.with_y_label(s.clone()),
+            Statement::Theme(_) => {} // applied in the pre-pass above
         }
     }
 
@@ -135,6 +150,37 @@ pub fn compile<'a>(program: &Program, theme: &'a Theme) -> Result<Blueprint<'a>,
     // Explicit SCALE statements added above take priority.
 
     Ok(bp)
+}
+
+fn apply_theme_statement(
+    theme: &mut Theme,
+    ts: &ThemeStatement,
+    base_dir: Option<&Path>,
+) -> Result<(), GglangError> {
+    match ts {
+        ThemeStatement::Inline(overrides) => {
+            for o in overrides {
+                theme.apply_override(&o.key, &o.value)?;
+            }
+        }
+        ThemeStatement::File(path_str) => {
+            let path = if std::path::Path::new(path_str).is_absolute() {
+                std::path::PathBuf::from(path_str)
+            } else if let Some(dir) = base_dir {
+                dir.join(path_str)
+            } else {
+                std::path::PathBuf::from(path_str)
+            };
+            let contents = std::fs::read_to_string(&path).map_err(|e| GglangError::Compile {
+                message: format!("Failed to read theme file '{}': {}", path.display(), e),
+            })?;
+            let overrides = crate::ast::parse_theme_file(&contents)?;
+            for o in overrides {
+                theme.apply_override(&o.key, &o.value)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -150,7 +196,7 @@ mod tests {
         let source = "MAP x=:x, y=:y\nGEOM POINT { color=\"#FF0000\" }";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0, 3.0]));
@@ -183,7 +229,7 @@ mod tests {
         let source = "MAP x=:x, y=:a\nGEOM POINT\nGEOM LINE { y=:b, color=\"#0000FF\" }";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0, 3.0]));
@@ -210,7 +256,7 @@ mod tests {
         let source = "MAP x=:category, y=:value\nGEOM POINT";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert("category".into(), RawColumn::StringArray(vec!["a".into(), "b".into(), "c".into()]));
@@ -227,7 +273,7 @@ mod tests {
         let source = "MAP x=:year, y=:value\nGEOM POINT\nSCALE X DISCRETE";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert("year".into(), RawColumn::IntArray(vec![2021, 2022, 2023]));
@@ -244,7 +290,7 @@ mod tests {
         let source = "MAP x=:x, y=:y\nGEOM POINT";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
@@ -263,7 +309,7 @@ mod tests {
         let source = "MAP x=:category\nGEOM BAR";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert(
@@ -288,7 +334,7 @@ mod tests {
         let source = "MAP x=:category, y=:value\nGEOM BAR";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert(
@@ -313,7 +359,7 @@ mod tests {
         let source = "MAP x=:x, y=:y, fill=:g\nGEOM BAR DODGE\nSCALE X DISCRETE";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert(
@@ -345,7 +391,7 @@ mod tests {
         let source = "MAP x=:x, y=:y, fill=:g\nGEOM BAR\nSCALE X DISCRETE";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let mut bp = compile(&program, &theme).unwrap();
+        let mut bp = compile(&program, &theme, None).unwrap();
 
         let mut data = PlotData::new();
         data.insert(
@@ -375,10 +421,43 @@ mod tests {
         let source = "GEOM POINT DODGE";
         let program = parse(source).unwrap();
         let theme = Theme::default();
-        let result = compile(&program, &theme);
+        let result = compile(&program, &theme, None);
         match result {
             Err(e) => assert!(e.to_string().contains("Position adjustment")),
             Ok(_) => panic!("Expected compile error for GEOM POINT DODGE"),
+        }
+    }
+
+    #[test]
+    fn theme_inline_overrides_apply() {
+        let source = "MAP x=:x, y=:y\nGEOM POINT\nTHEME { title_font_size = 32, axis_color = \"#333333\" }";
+        let program = parse(source).unwrap();
+        let bp = compile(&program, &Theme::default(), None).unwrap();
+        assert!((bp.theme().title_font_size - 32.0).abs() < 1e-5);
+        // #333333 → [0.2, 0.2, 0.2, 1.0]
+        let expected = 0x33 as f32 / 255.0;
+        assert!((bp.theme().axis_color[0] - expected).abs() < 1e-4);
+        assert!((bp.theme().axis_color[1] - expected).abs() < 1e-4);
+        assert!((bp.theme().axis_color[2] - expected).abs() < 1e-4);
+        assert!((bp.theme().axis_color[3] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn theme_stacking_last_wins() {
+        let source = "MAP x=:x, y=:y\nGEOM POINT\nTHEME { title_font_size = 10 }\nTHEME { title_font_size = 40 }";
+        let program = parse(source).unwrap();
+        let bp = compile(&program, &Theme::default(), None).unwrap();
+        assert!((bp.theme().title_font_size - 40.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn theme_unknown_key_errors() {
+        let source = "MAP x=:x, y=:y\nGEOM POINT\nTHEME { not_a_real_key = 5 }";
+        let program = parse(source).unwrap();
+        let result = compile(&program, &Theme::default(), None);
+        match result {
+            Err(e) => assert!(e.to_string().contains("not_a_real_key")),
+            Ok(_) => panic!("Expected compile error for unknown theme key"),
         }
     }
 }

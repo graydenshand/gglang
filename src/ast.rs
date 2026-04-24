@@ -51,6 +51,19 @@ pub enum Statement {
     XLabel(String),
     YLabel(String),
     Coord(CoordType),
+    Theme(ThemeStatement),
+}
+
+#[derive(Debug)]
+pub enum ThemeStatement {
+    Inline(Vec<ThemeOverride>),
+    File(String),
+}
+
+#[derive(Debug)]
+pub struct ThemeOverride {
+    pub key: String,
+    pub value: LiteralValue,
 }
 
 #[derive(Debug)]
@@ -130,6 +143,56 @@ fn parse_facet_scales(pair: pest::iterators::Pair<Rule>) -> Result<ScaleFreedom,
         Rule::fixed_scales => ScaleFreedom::Fixed,
         _ => unreachable!(),
     })
+}
+
+fn parse_theme_attributes(
+    pair: pest::iterators::Pair<Rule>,
+) -> Result<Vec<ThemeOverride>, GglangError> {
+    let mut overrides = vec![];
+    for attr_pair in pair.into_inner() {
+        if attr_pair.as_rule() == Rule::theme_attribute {
+            let mut inner = attr_pair.into_inner();
+            let key = inner
+                .next()
+                .ok_or_else(|| GglangError::Parse {
+                    message: "Expected key in theme_attribute".to_string(),
+                })?
+                .as_str()
+                .to_string();
+            let val_pair = inner.next().ok_or_else(|| GglangError::Parse {
+                message: "Expected value in theme_attribute".to_string(),
+            })?;
+            let val_inner = val_pair.into_inner().next().ok_or_else(|| GglangError::Parse {
+                message: "Expected value type token in theme_value".to_string(),
+            })?;
+            let value = match val_inner.as_rule() {
+                Rule::string_literal => {
+                    let s = val_inner.as_str();
+                    LiteralValue::Str(s[1..s.len() - 1].to_string())
+                }
+                Rule::number => {
+                    let n: f64 = val_inner.as_str().parse().map_err(|_| GglangError::Parse {
+                        message: format!("Invalid number in theme attribute: {}", val_inner.as_str()),
+                    })?;
+                    LiteralValue::Number(n)
+                }
+                _ => unreachable!(),
+            };
+            overrides.push(ThemeOverride { key, value });
+        }
+    }
+    Ok(overrides)
+}
+
+pub fn parse_theme_file(source: &str) -> Result<Vec<ThemeOverride>, GglangError> {
+    let pairs =
+        GGCParser::parse(Rule::theme_file_contents, source).map_err(|e| GglangError::Parse {
+            message: e.to_string(),
+        })?;
+    let pair = pairs.into_iter().next().ok_or_else(|| GglangError::Parse {
+        message: "Empty theme file".to_string(),
+    })?;
+    parse_theme_attributes(pair)
 }
 
 pub fn parse(source: &str) -> Result<Program, GglangError> {
@@ -531,6 +594,32 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             })?
                             .as_str();
                         statements.push(Statement::YLabel(s[1..s.len() - 1].to_string()));
+                    }
+                    Rule::theme_statement => {
+                        let inner = stmt_inner
+                            .into_inner()
+                            .next()
+                            .ok_or_else(|| GglangError::Parse {
+                                message: "Expected theme body in theme_statement".to_string(),
+                            })?;
+                        let ts = match inner.as_rule() {
+                            Rule::theme_file => {
+                                let s = inner
+                                    .into_inner()
+                                    .next()
+                                    .ok_or_else(|| GglangError::Parse {
+                                        message: "Expected path in THEME FILE".to_string(),
+                                    })?
+                                    .as_str();
+                                ThemeStatement::File(s[1..s.len() - 1].to_string())
+                            }
+                            Rule::theme_inline => {
+                                let overrides = parse_theme_attributes(inner)?;
+                                ThemeStatement::Inline(overrides)
+                            }
+                            _ => unreachable!(),
+                        };
+                        statements.push(Statement::Theme(ts));
                     }
                     _ => {}
                 }

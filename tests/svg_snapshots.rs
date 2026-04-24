@@ -4,19 +4,23 @@ const WIDTH: u32 = 1200;
 const HEIGHT: u32 = 900;
 
 fn render_example(gg_path: &str, csv_path: &str) -> String {
-    let source = std::fs::read_to_string(gg_path)
+    let script_path = Path::new(gg_path);
+    let source = std::fs::read_to_string(script_path)
         .unwrap_or_else(|e| panic!("Failed to read {gg_path}: {e}"));
     let program = ggc::ast::parse(&source)
         .unwrap_or_else(|e| panic!("Failed to parse {gg_path}: {e}"));
-    let theme = ggc::theme::Theme::default();
-    let mut blueprint = ggc::compile::compile(&program, &theme)
-        .unwrap_or_else(|e| panic!("Failed to compile {gg_path}: {e}"));
+    let mut blueprint = ggc::compile::compile(
+        &program,
+        &ggc::theme::Theme::default(),
+        script_path.parent(),
+    )
+    .unwrap_or_else(|e| panic!("Failed to compile {gg_path}: {e}"));
     let data = ggc::data::load_csv(Path::new(csv_path))
         .unwrap_or_else(|e| panic!("Failed to load {csv_path}: {e}"));
     let plot_output = blueprint
         .render(data)
         .unwrap_or_else(|e| panic!("Failed to render {gg_path}: {e}"));
-    ggc::svg::render_svg(&plot_output, &theme, WIDTH, HEIGHT)
+    ggc::svg::render_svg(&plot_output, blueprint.theme(), WIDTH, HEIGHT)
 }
 
 macro_rules! snapshot_test {
@@ -51,3 +55,5 @@ snapshot_test!(radar, "radar.gg", "radar.csv");
 snapshot_test!(polar_scatter, "polar_scatter.gg", "iris-mock.csv");
 snapshot_test!(geom_text, "geom_text.gg", "iris-mock.csv");
 snapshot_test!(scatter_color_continuous, "scatter_color_continuous.gg", "scatter_color_continuous.csv");
+snapshot_test!(theme_overrides, "theme_overrides.gg", "iris-mock.csv");
+snapshot_test!(theme_file, "theme_file.gg", "iris-mock.csv");

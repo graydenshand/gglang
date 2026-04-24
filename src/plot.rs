@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 /// Facets
 /// Coordinates
 /// Theme
-pub struct Blueprint<'a> {
+pub struct Blueprint {
     /// Default mappings of data to visual channels
     mappings: Vec<Mapping>,
 
@@ -33,8 +33,8 @@ pub struct Blueprint<'a> {
     /// Coordinate System
     coordinates: CoordinateSystem,
 
-    /// Theme settings
-    theme: &'a Theme,
+    /// Theme settings (owned; may include inline overrides from the .gg script)
+    theme: Theme,
 
     /// Optional plot title
     pub title: Option<String>,
@@ -48,9 +48,9 @@ pub struct Blueprint<'a> {
     /// Optional y-axis label (defaults to mapped column name)
     pub y_label: Option<String>,
 }
-impl<'a> Blueprint<'a> {
+impl Blueprint {
     /// Create a new, empty blueprint
-    pub fn new(theme: &'a Theme) -> Self {
+    pub fn new(theme: Theme) -> Self {
         Self {
             mappings: vec![],
             layers: vec![],
@@ -94,9 +94,13 @@ impl<'a> Blueprint<'a> {
         self
     }
 
-    pub fn with_theme(mut self, theme: &'a Theme) -> Self {
+    pub fn with_theme(mut self, theme: Theme) -> Self {
         self.theme = theme;
         self
+    }
+
+    pub fn theme(&self) -> &Theme {
+        &self.theme
     }
 
     pub fn with_title(mut self, title: String) -> Self {
@@ -394,7 +398,7 @@ impl<'a> Blueprint<'a> {
                             self.caption.is_some(),
                             has_legend,
                             y_free,
-                            self.theme,
+                            &self.theme,
                         )
                     }
                     FacetSpec::Grid { row_var, col_var, .. } => {
@@ -418,7 +422,7 @@ impl<'a> Blueprint<'a> {
                             self.title.is_some(),
                             self.caption.is_some(),
                             has_legend,
-                            self.theme,
+                            &self.theme,
                         )
                     }
                 };
@@ -444,7 +448,7 @@ impl<'a> Blueprint<'a> {
                 // Render scales / axes
                 if self.coordinates.is_polar() {
                     // Polar axes: concentric circles + radial spokes + labels
-                    let mut polar_elements = self.coordinates.render_polar_axes(&self.scales, self.theme);
+                    let mut polar_elements = self.coordinates.render_polar_axes(&self.scales, &self.theme);
                     regions
                         .entry(RegionKey::shared(PlotRegion::DataArea))
                         .or_default()
@@ -454,7 +458,7 @@ impl<'a> Blueprint<'a> {
                         if matches!(scale.aesthetic_family(), AestheticFamily::HorizontalPosition | AestheticFamily::VerticalPosition) {
                             continue;
                         }
-                        let (region, mut scale_elements) = scale.render(self.theme)?;
+                        let (region, mut scale_elements) = scale.render(&self.theme)?;
                         regions
                             .entry(RegionKey::shared(region))
                             .or_default()
@@ -462,7 +466,7 @@ impl<'a> Blueprint<'a> {
                     }
                 } else {
                     for scale in &self.scales {
-                        let (region, mut scale_elements) = scale.render(self.theme)?;
+                        let (region, mut scale_elements) = scale.render(&self.theme)?;
                         regions
                             .entry(RegionKey::shared(region))
                             .or_default()
@@ -480,9 +484,9 @@ impl<'a> Blueprint<'a> {
                     .iter()
                     .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill));
                 let layout = if self.coordinates.is_polar() {
-                    polar_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme)
+                    polar_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, &self.theme)
                 } else {
-                    standard_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, self.theme)
+                    standard_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, &self.theme)
                 };
 
                 Ok(PlotOutput { regions, layout, is_polar: self.coordinates.is_polar() })
@@ -584,7 +588,7 @@ impl<'a> Blueprint<'a> {
             let emit_x_ticks = x_free || is_bottom_of_column;
             if emit_x_ticks {
                 for scale in &scale_refs {
-                    let (region, mut scale_elements) = scale.render(self.theme)?;
+                    let (region, mut scale_elements) = scale.render(&self.theme)?;
                     if region == PlotRegion::XAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::XAxisGutter, panel_idx))
@@ -612,7 +616,7 @@ impl<'a> Blueprint<'a> {
                     x_free, y_free, &panel_scales[panel_idx],
                 );
                 for scale in &scale_refs {
-                    let (region, mut scale_elements) = scale.render(self.theme)?;
+                    let (region, mut scale_elements) = scale.render(&self.theme)?;
                     if region == PlotRegion::YAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::YAxisGutter, panel_idx))
@@ -624,7 +628,7 @@ impl<'a> Blueprint<'a> {
         } else {
             for row in 0..num_rows {
                 for scale in &self.scales {
-                    let (region, mut scale_elements) = scale.render(self.theme)?;
+                    let (region, mut scale_elements) = scale.render(&self.theme)?;
                     if region == PlotRegion::YAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::YAxisGutter, row))
@@ -637,7 +641,7 @@ impl<'a> Blueprint<'a> {
 
         // Shared legend
         for scale in &self.scales {
-            let (region, mut scale_elements) = scale.render(self.theme)?;
+            let (region, mut scale_elements) = scale.render(&self.theme)?;
             if region == PlotRegion::Legend {
                 regions
                     .entry(RegionKey::shared(PlotRegion::Legend))
@@ -838,7 +842,7 @@ impl<'a> Blueprint<'a> {
                 let is_bottom_row = ri == num_grid_rows - 1;
                 if is_bottom_row || x_free {
                     for scale in &scale_refs {
-                        let (region, mut elements) = scale.render(self.theme)?;
+                        let (region, mut elements) = scale.render(&self.theme)?;
                         if region == PlotRegion::XAxisGutter {
                             regions
                                 .entry(RegionKey::panel(PlotRegion::XAxisGutter, panel_idx))
@@ -858,7 +862,7 @@ impl<'a> Blueprint<'a> {
                     let panel_idx2 = ri * num_grid_cols + ci2;
                     if let Some(ref cys) = col_y_scales {
                         for scale in &cys[ci2] {
-                            let (region, mut elements) = scale.render(self.theme)?;
+                            let (region, mut elements) = scale.render(&self.theme)?;
                             if region == PlotRegion::YAxisGutter {
                                 regions
                                     .entry(RegionKey::panel(PlotRegion::YAxisGutter, panel_idx2))
@@ -875,7 +879,7 @@ impl<'a> Blueprint<'a> {
                     &self.scales
                 };
                 for scale in row_scales {
-                    let (region, mut elements) = scale.render(self.theme)?;
+                    let (region, mut elements) = scale.render(&self.theme)?;
                     if region == PlotRegion::YAxisGutter {
                         regions
                             .entry(RegionKey::panel(PlotRegion::YAxisGutter, ri))
@@ -900,7 +904,7 @@ impl<'a> Blueprint<'a> {
 
         // Shared legend
         for scale in &self.scales {
-            let (region, mut scale_elements) = scale.render(self.theme)?;
+            let (region, mut scale_elements) = scale.render(&self.theme)?;
             if region == PlotRegion::Legend {
                 regions
                     .entry(RegionKey::shared(PlotRegion::Legend))
@@ -1777,7 +1781,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -1822,7 +1826,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -1859,7 +1863,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme).with_layer(layer);
+        let mut bp = Blueprint::new(theme.clone()).with_layer(layer);
 
         let mut data = PlotData::new();
         data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
@@ -1883,7 +1887,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme).with_layer(layer);
+        let mut bp = Blueprint::new(theme.clone()).with_layer(layer);
 
         let mut data = PlotData::new();
         data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
@@ -1914,7 +1918,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme).with_layer(layer);
+        let mut bp = Blueprint::new(theme.clone()).with_layer(layer);
 
         let mut data = PlotData::new();
         data.insert("x".into(), RawColumn::FloatArray(vec![1.0, 2.0]));
@@ -1950,7 +1954,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -1991,7 +1995,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -2034,7 +2038,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -2087,7 +2091,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -2123,7 +2127,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping {
                 aesthetic: Aesthetic::X,
@@ -2187,7 +2191,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let _bp = Blueprint::new(&theme)
+        let _bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::X)))
             .with_scale(Box::new(ScalePositionContinuous::new(Axis::Y)));
@@ -2268,7 +2272,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
@@ -2306,7 +2310,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "a".into() })
@@ -2342,7 +2346,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer1)
             .with_layer(layer2)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
@@ -2400,7 +2404,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
@@ -2474,7 +2478,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
@@ -2511,7 +2515,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
@@ -2578,7 +2582,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })
@@ -2635,7 +2639,7 @@ mod test {
             Box::new(IdentityTransform {}),
             Box::new(IdentityTransform {}),
         );
-        let mut bp = Blueprint::new(&theme)
+        let mut bp = Blueprint::new(theme.clone())
             .with_layer(layer)
             .with_mapping(Mapping { aesthetic: Aesthetic::X, variable: "x".into() })
             .with_mapping(Mapping { aesthetic: Aesthetic::Y, variable: "y".into() })

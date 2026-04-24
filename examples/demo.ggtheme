@@ -1,0 +1,7 @@
+// Demo company theme
+title_font_size = 52
+axis_label_font_size = 30
+facet_label_font_size = 20
+axis_color = "#999999"
+facet_label_bg_color = "#E8F0FE"
+window_margin = 25

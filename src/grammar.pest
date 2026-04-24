@@ -9,11 +9,22 @@ statement = {
     scale_statement |
     facet_statement |
     coord_statement |
+    theme_statement |
     title_statement |
     xlabel_statement |
     ylabel_statement |
     caption_statement
 }
+
+// Theme Statement
+theme_statement  = { "THEME" ~ (theme_file | theme_inline) }
+theme_inline     = { "{" ~ theme_attribute ~ ("," ~ theme_attribute)* ~ ","? ~ "}" }
+theme_file       = { "FILE" ~ string_literal }
+theme_attribute  = { identifier ~ "=" ~ theme_value }
+theme_value      = { string_literal | number }
+
+// Standalone entry point for .ggtheme files
+theme_file_contents = { SOI ~ theme_attribute* ~ EOI }
 
 // Coordinate System Statement
 coord_statement = { "COORD" ~ coord_type ~ coord_start? }

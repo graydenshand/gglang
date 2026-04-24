@@ -1,0 +1,7 @@
+MAP x=:x, y=:y, color=:species
+GEOM POINT
+TITLE "Iris — file theme"
+THEME FILE "demo.ggtheme"
+THEME {
+    title_font_size = 44
+}

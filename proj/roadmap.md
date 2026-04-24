@@ -28,7 +28,7 @@
 
 Target: credible, demo-able grammar-of-graphics engine with core ggplot2 vocabulary.
 
-1. **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references.
+1. ~~**Theme overrides**~~ — `THEME { key=value }` inline overrides and `THEME FILE "path"` references. Blueprint now owns its merged theme; all 22 Theme fields are settable; stacking/inheritance works; `app::run` bug fixed.
 2. **Log scale** (`stories/log_scale.md`) — `ScaleLogContinuous` for orders-of-magnitude data.
 3. **Geom histogram** (`stories/geom_histogram.md`) — `StatBin` + bar rendering for continuous distributions.
 4. **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. New SDF functions in the point shader.
