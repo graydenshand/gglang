@@ -4,7 +4,7 @@ use winit::window::Window;
 
 use crate::layout::{PlotOutput, PlotRegion, WindowSegment};
 use crate::theme::Theme;
-use crate::shape::{Element, HAlign, Rectangle, Text, TextRotation, VAlign};
+use crate::shape::{Element, GradientBarData, HAlign, Rectangle, Text, TextRotation, VAlign};
 use crate::transform::ContinuousNumericScale;
 
 use std::collections::HashMap;
@@ -162,6 +162,59 @@ fn rectangle_vertices(rect: &Rectangle, segment: &WindowSegment) -> Vec<Vertex> 
         Vertex { position: [abs_position[0] + abs_width / 2., abs_position[1] - abs_height / 2., 0.0], color: rect.color },
         Vertex { position: [abs_position[0] + abs_width / 2., abs_position[1] + abs_height / 2., 0.0], color: rect.color },
     ]
+}
+
+/// Interpolate between the provided stops at position `t` in [0, 1].
+fn interp_stops(stops: &[[f32; 3]], t: f32) -> [f32; 4] {
+    if stops.is_empty() {
+        return [0.0, 0.0, 0.0, 1.0];
+    }
+    let t = t.clamp(0.0, 1.0);
+    let n = stops.len() - 1;
+    let scaled = t * n as f32;
+    let lo = scaled.floor() as usize;
+    let hi = (lo + 1).min(n);
+    let frac = scaled - lo as f32;
+    let a = stops[lo];
+    let b = stops[hi];
+    [
+        a[0] + (b[0] - a[0]) * frac,
+        a[1] + (b[1] - a[1]) * frac,
+        a[2] + (b[2] - a[2]) * frac,
+        1.0,
+    ]
+}
+
+/// Tessellate a gradient bar into N horizontal strips in the general vertex buffer.
+fn tessellate_gradient_bar(
+    gb: &GradientBarData,
+    segment: &WindowSegment,
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u32>,
+) {
+    const N: usize = 32;
+    let x_left = segment.abs_x(&gb.position[0]);
+    let y_top = segment.abs_y(&gb.position[1]);
+    let w = segment.abs_width(&gb.width);
+    let h = segment.abs_height(&gb.height);
+    let x_right = x_left + w;
+    let y_base = y_top - h; // bottom of bar in clip space (Y up)
+
+    for i in 0..N {
+        let t0 = i as f32 / N as f32;
+        let t1 = (i + 1) as f32 / N as f32;
+        let t_mid = (i as f32 + 0.5) / N as f32;
+        let y0 = y_base + t0 * h; // bottom of this strip
+        let y1 = y_base + t1 * h; // top of this strip
+        let color = interp_stops(&gb.stops, t_mid);
+        let base = vertices.len() as u32;
+        // TL, BL, BR, TR
+        vertices.push(Vertex { position: [x_left,  y1, 0.0], color });
+        vertices.push(Vertex { position: [x_left,  y0, 0.0], color });
+        vertices.push(Vertex { position: [x_right, y0, 0.0], color });
+        vertices.push(Vertex { position: [x_right, y1, 0.0], color });
+        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
 }
 
 fn text_to_section<'a>(
@@ -654,6 +707,10 @@ impl Frame {
                             }
                         }
                     }
+                    Element::GradientBar(gb) => {
+                        tessellate_gradient_bar(gb, segment, &mut vertices, &mut indices);
+                    }
+
                     Element::Text(t) => {
                         text_sections_by_rotation
                             .entry(t.rotation)

@@ -2,7 +2,7 @@ use crate::aesthetic::{Aesthetic, AestheticFamily};
 use crate::column::{AesData, MappedColumn, RawColumn};
 use crate::error::GglangError;
 use crate::layout::{PlotRegion, Unit};
-use crate::shape::{Element, HAlign, Rectangle, Text, VAlign};
+use crate::shape::{Element, GradientBarData, HAlign, Rectangle, Text, VAlign};
 use crate::theme::Theme;
 use crate::transform::{nice_bounds, nice_step, ContinuousNumericScale, NDC_SCALE};
 
@@ -733,6 +733,141 @@ impl Scale for ScaleAlphaContinuous {
     }
 }
 
+/// Viridis colormap: 8 stops sampled uniformly from t=0 (purple) to t=1 (yellow).
+/// Explicit f32 literals ensure snapshot stability across platforms.
+const VIRIDIS_STOPS: [[f32; 3]; 8] = [
+    [0.267, 0.005, 0.329], // t=0.000
+    [0.283, 0.141, 0.458], // t=0.143
+    [0.254, 0.265, 0.530], // t=0.286
+    [0.207, 0.372, 0.553], // t=0.429
+    [0.164, 0.471, 0.558], // t=0.571
+    [0.128, 0.567, 0.551], // t=0.714
+    [0.369, 0.789, 0.383], // t=0.857
+    [0.993, 0.906, 0.144], // t=1.000
+];
+
+/// Interpolate a color from the viridis palette at position `t` in [0, 1].
+fn viridis(t: f32) -> [f32; 3] {
+    let t = t.clamp(0.0, 1.0);
+    let n = VIRIDIS_STOPS.len() - 1;
+    let scaled = t * n as f32;
+    let lo = scaled.floor() as usize;
+    let hi = (lo + 1).min(n);
+    let frac = scaled - lo as f32;
+    let a = VIRIDIS_STOPS[lo];
+    let b = VIRIDIS_STOPS[hi];
+    [
+        a[0] + (b[0] - a[0]) * frac,
+        a[1] + (b[1] - a[1]) * frac,
+        a[2] + (b[2] - a[2]) * frac,
+    ]
+}
+
+/// A continuous scale that maps a numeric domain to a viridis color gradient.
+pub struct ScaleColorContinuous {
+    family: AestheticFamily,
+    min: f64,
+    max: f64,
+    tick_bounds: Option<(f64, f64)>,
+}
+
+impl ScaleColorContinuous {
+    pub fn new() -> Self {
+        Self {
+            family: AestheticFamily::Color,
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
+            tick_bounds: None,
+        }
+    }
+}
+
+impl Scale for ScaleColorContinuous {
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
+        match v {
+            RawColumn::StringArray(_) => Err(GglangError::Render {
+                message: "ScaleColorContinuous expects a numeric column, got strings. \
+                          Use a numeric variable or switch to ScaleColorDiscrete."
+                    .to_string(),
+            }),
+            _ => {
+                let vals = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
+                for val in vals {
+                    if val < self.min { self.min = val; }
+                    if val > self.max { self.max = val; }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn fit(&mut self) -> Result<(), GglangError> {
+        if self.min.is_infinite() {
+            self.min = 0.0;
+            self.max = 1.0;
+        }
+        if (self.max - self.min).abs() < 1e-12 {
+            self.max = self.min + 1.0;
+        }
+        let (nice_min, nice_max) = nice_bounds(self.min, self.max, TARGET_TICK_COUNT);
+        self.tick_bounds = Some((nice_min, nice_max));
+        Ok(())
+    }
+
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
+        let vals = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
+        let range = self.max - self.min;
+        let colors: Vec<[f32; 3]> = vals
+            .iter()
+            .map(|&x| {
+                let t = ((x - self.min) / range).clamp(0.0, 1.0) as f32;
+                viridis(t)
+            })
+            .collect();
+        Ok(MappedColumn::ColorArray(colors))
+    }
+
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        let mut elements = vec![];
+
+        // Bar spans NDC 0.8 (top) → NDC -0.8 (bottom) so the height (NDC 1.6)
+        // and label positions (NDC 0.8 / 0.0 / -0.8) share the same coordinate system.
+        elements.push(Element::GradientBar(GradientBarData {
+            position: [Unit::Percent(10.0), Unit::NDC(0.8)],
+            width: Unit::Pixels(24),
+            height: Unit::NDC(1.6),
+            stops: VIRIDIS_STOPS.to_vec(),
+        }));
+
+        // Tick labels at max (top), mid, min (bottom) — left of bar text at Percent(25%)
+        let (tick_min, tick_max) = self.tick_bounds.unwrap_or((self.min, self.max));
+        let tick_mid = (tick_min + tick_max) / 2.0;
+        let tick_values = [tick_max, tick_mid, tick_min];
+        let tick_ndcs: [f32; 3] = [0.8, 0.0, -0.8];
+        let labels = format_ticks(&tick_values);
+        for (label, ndc) in labels.into_iter().zip(tick_ndcs) {
+            elements.push(Element::Text(
+                Text::new(
+                    label,
+                    theme.legend_label_font_size,
+                    (Unit::Percent(25.0), Unit::NDC(ndc)),
+                )
+                .with_v_align(VAlign::Center),
+            ));
+        }
+
+        Ok((PlotRegion::Legend, elements))
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        self.family
+    }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScaleColorContinuous::new())
+    }
+}
+
 /// Return the default scale for a given aesthetic, if one exists.
 /// `data_hint` is the raw column that will be mapped, used to auto-detect discrete vs continuous.
 pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -> Option<Box<dyn Scale>> {
@@ -752,7 +887,13 @@ pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -
                 Some(Box::new(ScalePositionContinuous::new(Axis::Y)))
             }
         }
-        Aesthetic::Color => Some(Box::new(ScaleColorDiscrete::new())),
+        Aesthetic::Color => {
+            if is_string {
+                Some(Box::new(ScaleColorDiscrete::new()))
+            } else {
+                Some(Box::new(ScaleColorContinuous::new()))
+            }
+        }
         Aesthetic::Fill => Some(Box::new(ScaleColorDiscrete::new_fill())),
         Aesthetic::Group => None,
         Aesthetic::Alpha => Some(Box::new(ScaleAlphaContinuous::new())),
@@ -1018,5 +1159,89 @@ mod test {
             }
             _ => panic!("Expected FloatArray"),
         }
+    }
+
+    #[test]
+    fn scale_color_continuous_maps_min_to_first_stop() {
+        let mut scale = ScaleColorContinuous::new();
+        scale.append(&RawColumn::FloatArray(vec![0.0, 100.0])).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![0.0])).unwrap();
+        match mapped {
+            MappedColumn::ColorArray(colors) => {
+                let expected = VIRIDIS_STOPS[0];
+                assert!((colors[0][0] - expected[0]).abs() < 1e-5, "R mismatch");
+                assert!((colors[0][1] - expected[1]).abs() < 1e-5, "G mismatch");
+                assert!((colors[0][2] - expected[2]).abs() < 1e-5, "B mismatch");
+            }
+            _ => panic!("Expected ColorArray"),
+        }
+    }
+
+    #[test]
+    fn scale_color_continuous_maps_max_to_last_stop() {
+        let mut scale = ScaleColorContinuous::new();
+        scale.append(&RawColumn::FloatArray(vec![0.0, 100.0])).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![100.0])).unwrap();
+        match mapped {
+            MappedColumn::ColorArray(colors) => {
+                let expected = VIRIDIS_STOPS[7];
+                assert!((colors[0][0] - expected[0]).abs() < 1e-5, "R mismatch");
+                assert!((colors[0][1] - expected[1]).abs() < 1e-5, "G mismatch");
+                assert!((colors[0][2] - expected[2]).abs() < 1e-5, "B mismatch");
+            }
+            _ => panic!("Expected ColorArray"),
+        }
+    }
+
+    #[test]
+    fn scale_color_continuous_midpoint_is_interior() {
+        let mut scale = ScaleColorContinuous::new();
+        scale.append(&RawColumn::FloatArray(vec![0.0, 100.0])).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![50.0])).unwrap();
+        match mapped {
+            MappedColumn::ColorArray(colors) => {
+                let first = VIRIDIS_STOPS[0];
+                let last = VIRIDIS_STOPS[7];
+                // Midpoint must differ from both endpoints
+                assert!(
+                    colors[0].iter().zip(first.iter()).any(|(a, b)| (a - b).abs() > 0.01),
+                    "Midpoint should not equal first stop"
+                );
+                assert!(
+                    colors[0].iter().zip(last.iter()).any(|(a, b)| (a - b).abs() > 0.01),
+                    "Midpoint should not equal last stop"
+                );
+            }
+            _ => panic!("Expected ColorArray"),
+        }
+    }
+
+    #[test]
+    fn scale_color_continuous_rejects_string_array() {
+        let mut scale = ScaleColorContinuous::new();
+        let result = scale.append(&RawColumn::StringArray(vec!["a".into()]));
+        assert!(result.is_err(), "Should reject StringArray");
+    }
+
+    #[test]
+    fn default_scale_for_color_float_gives_continuous() {
+        let col = RawColumn::FloatArray(vec![1.0, 2.0]);
+        let scale = default_scale_for(&Aesthetic::Color, Some(&col));
+        assert!(scale.is_some());
+        assert_eq!(scale.unwrap().aesthetic_family(), AestheticFamily::Color);
+    }
+
+    #[test]
+    fn default_scale_for_color_string_gives_discrete() {
+        let col = RawColumn::StringArray(vec!["a".into()]);
+        let scale = default_scale_for(&Aesthetic::Color, Some(&col));
+        assert!(scale.is_some());
+        assert_eq!(scale.unwrap().aesthetic_family(), AestheticFamily::Color);
     }
 }

@@ -22,21 +22,21 @@
 19. ~~**Snapshot testing**~~ — SVG-based regression testing framework using `insta`; 14 example `.gg`+`.csv` pairs checked in as reference snapshots.
 20. ~~**Polar coordinates**~~ — `COORD POLAR` transform for pie/rose charts, radar plots, polar scatter. `CoordinateSystem::Polar` with `Element::Arc` for wedges, polar axis rendering (concentric circles + radial spokes), SVG+GPU backends.
 21. ~~**Geom text**~~ — `GEOM TEXT` with `label` aesthetic (mapped string/numeric column). `Aesthetic::Label`, `Text::color` field threaded through SVG + GPU backends.
+22. ~~**Continuous color scale**~~ — `ScaleColorContinuous` maps numeric → viridis gradient. `Element::GradientBar` rendered as SVG `<linearGradient>` or GPU strips. Auto-detected when color column is numeric.
 
 ## Current sprint — v0.1.0
 
 Target: credible, demo-able grammar-of-graphics engine with core ggplot2 vocabulary.
 
-1. **Continuous color scale** (`stories/scale_color_continuous.md`) — Map numeric variable to color gradient (viridis-style). Prerequisite for heatmaps.
-2. **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references.
-3. **Log scale** (`stories/log_scale.md`) — `ScaleLogContinuous` for orders-of-magnitude data.
-4. **Geom histogram** (`stories/geom_histogram.md`) — `StatBin` + bar rendering for continuous distributions.
-5. **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. New SDF functions in the point shader.
-6. **Size aesthetic** (`stories/size_aesthetic.md`) — Map numeric variable to point radius for bubble charts.
-7. **Multi-legend layout** (`stories/multi_legend.md`) — Stack multiple legends (color, shape, size) in the legend region.
-8. **Error diagnostics** (`stories/error_diagnostics.md`) — Helpful parse/compile/data error messages with source locations and suggestions.
-9. **Example datasets** (`stories/example_datasets.md`) — Curated real-world CSVs (gapminder, penguins, etc.) replacing toy data in examples and docs.
-10. **Documentation site** (`stories/docs_site.md`) — GQL language docs: conceptual guide, feature reference, and gallery with rendered examples. Separate from crate docs.
+1. **Theme overrides** (`stories/theme_overrides.md`) — `THEME { key=value }` inline overrides and `THEME FILE "path"` references.
+2. **Log scale** (`stories/log_scale.md`) — `ScaleLogContinuous` for orders-of-magnitude data.
+3. **Geom histogram** (`stories/geom_histogram.md`) — `StatBin` + bar rendering for continuous distributions.
+4. **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. New SDF functions in the point shader.
+5. **Size aesthetic** (`stories/size_aesthetic.md`) — Map numeric variable to point radius for bubble charts.
+6. **Multi-legend layout** (`stories/multi_legend.md`) — Stack multiple legends (color, shape, size) in the legend region.
+7. **Error diagnostics** (`stories/error_diagnostics.md`) — Helpful parse/compile/data error messages with source locations and suggestions.
+8. **Example datasets** (`stories/example_datasets.md`) — Curated real-world CSVs (gapminder, penguins, etc.) replacing toy data in examples and docs.
+9. **Documentation site** (`stories/docs_site.md`) — GQL language docs: conceptual guide, feature reference, and gallery with rendered examples. Separate from crate docs.
 
 ## Backlog — Features
 

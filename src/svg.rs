@@ -69,7 +69,7 @@ pub fn render_svg(output: &PlotOutput, theme: &Theme, width: u32, height: u32) -
         }
         svg.push_str(&format!("<g clip-path=\"url(#cp{i})\">\n"));
         for element in *elements {
-            render_element(&mut svg, element, seg);
+            render_element(&mut svg, element, seg, i);
         }
         svg.push_str("</g>\n");
     }
@@ -78,7 +78,7 @@ pub fn render_svg(output: &PlotOutput, theme: &Theme, width: u32, height: u32) -
     svg
 }
 
-fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment) {
+fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment, clip_idx: usize) {
     match element {
         Element::Rect(r) => {
             let cx = seg.px_x(&r.position[0]);
@@ -192,6 +192,27 @@ fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment) {
             }
         }
 
+        Element::GradientBar(gb) => {
+            let x = seg.px_x(&gb.position[0]);
+            let y = seg.px_y(&gb.position[1]);
+            let w = seg.px_width(&gb.width);
+            let h = seg.px_height(&gb.height);
+            let grad_id = format!("lg{clip_idx}");
+            // Inline <defs> — SVG allows <defs> anywhere in the document.
+            // stops are bottom→top (min→max); SVG y1="100%" y2="0%" maps bottom=first stop.
+            svg.push_str(&format!("  <defs><linearGradient id=\"{grad_id}\" x1=\"0%\" y1=\"100%\" x2=\"0%\" y2=\"0%\">\n"));
+            let n = gb.stops.len().saturating_sub(1).max(1);
+            for (i, stop) in gb.stops.iter().enumerate() {
+                let pct = (i * 100) / n;
+                let color = rgb_to_css(*stop);
+                svg.push_str(&format!("    <stop offset=\"{pct}%\" stop-color=\"{color}\"/>\n"));
+            }
+            svg.push_str(&format!("  </linearGradient></defs>\n"));
+            svg.push_str(&format!(
+                "  <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"url(#{grad_id})\"/>\n"
+            ));
+        }
+
         Element::Text(t) => {
             let x = seg.px_x(&t.position.0);
             let y = seg.px_y(&t.position.1);
@@ -279,6 +300,15 @@ fn rgba_to_css(color: [f32; 4]) -> String {
     let b = (color[2] * 255.0).round() as u8;
     let a = color[3];
     format!("rgba({r},{g},{b},{a:.4})")
+}
+
+fn rgb_to_css(c: [f32; 3]) -> String {
+    format!(
+        "rgb({},{},{})",
+        (c[0] * 255.0).round() as u8,
+        (c[1] * 255.0).round() as u8,
+        (c[2] * 255.0).round() as u8,
+    )
 }
 
 fn escape_xml(s: &str) -> String {

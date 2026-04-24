@@ -139,11 +139,22 @@ pub struct ArcData {
     pub color: [f32; 4],
 }
 
-/// An element can be a Rect, Point, Polyline, Text, or Arc
+/// Domain-level gradient bar — a rectangular region filled with a color gradient.
+/// `stops` are ordered bottom→top (min→max value). Backends render via SVG
+/// `<linearGradient>` or GPU strip tessellation.
+pub struct GradientBarData {
+    pub position: [Unit; 2], // top-left corner in region-local NDC
+    pub width: Unit,
+    pub height: Unit,
+    pub stops: Vec<[f32; 3]>, // RGB, bottom→top == min→max
+}
+
+/// An element can be a Rect, Point, Polyline, Text, Arc, or GradientBar
 pub enum Element {
     Rect(Rectangle),
     Point(PointData),
     Polyline(PolylineData),
     Text(Text),
     Arc(ArcData),
+    GradientBar(GradientBarData),
 }

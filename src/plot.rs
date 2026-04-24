@@ -1227,7 +1227,8 @@ impl CoordinateSystem {
                             ..t
                         })
                     }
-                    Element::Arc(_) => e, // already polar
+                    Element::Arc(_) => e,           // already polar
+                    Element::GradientBar(_) => e,   // legend elements, unchanged
                 }).collect()
             }
         }

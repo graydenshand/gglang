@@ -50,3 +50,4 @@ snapshot_test!(pie, "pie.gg", "pie.csv");
 snapshot_test!(radar, "radar.gg", "radar.csv");
 snapshot_test!(polar_scatter, "polar_scatter.gg", "iris-mock.csv");
 snapshot_test!(geom_text, "geom_text.gg", "iris-mock.csv");
+snapshot_test!(scatter_color_continuous, "scatter_color_continuous.gg", "scatter_color_continuous.csv");

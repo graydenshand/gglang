@@ -1,0 +1,91 @@
+---
+source: tests/svg_snapshots.rs
+expression: svg
+---
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+<rect x="0" y="0" width="1200" height="900" fill="white"/>
+<defs>
+  <clipPath id="cp0"><rect x="95.00" y="125.00" width="874.00" height="710.00"/></clipPath>
+  <clipPath id="cp1"><rect x="985.00" y="125.00" width="200.00" height="710.00"/></clipPath>
+  <clipPath id="cp2"><rect x="15.00" y="15.00" width="1170.00" height="110.00"/></clipPath>
+  <clipPath id="cp3"><rect x="71.00" y="835.00" width="922.00" height="50.00"/></clipPath>
+  <clipPath id="cp4"><rect x="-9.00" y="113.00" width="104.00" height="734.00"/></clipPath>
+</defs>
+<g clip-path="url(#cp0)">
+  <circle cx="230.07" cy="583.27" r="8.00" fill="rgba(68,1,84,1.0000)"/>
+  <circle cx="357.20" cy="344.45" r="8.00" fill="rgba(70,45,122,1.0000)"/>
+  <circle cx="460.49" cy="680.09" r="8.00" fill="rgba(57,86,139,1.0000)"/>
+  <circle cx="587.62" cy="267.00" r="8.00" fill="rgba(39,126,142,1.0000)"/>
+  <circle cx="396.93" cy="447.73" r="8.00" fill="rgba(67,176,117,1.0000)"/>
+  <circle cx="682.96" cy="628.45" r="8.00" fill="rgba(71,28,109,1.0000)"/>
+  <circle cx="198.29" cy="215.36" r="8.00" fill="rgba(168,215,69,1.0000)"/>
+  <circle cx="722.69" cy="505.82" r="8.00" fill="rgba(63,71,136,1.0000)"/>
+  <circle cx="301.58" cy="363.82" r="8.00" fill="rgba(44,115,142,1.0000)"/>
+  <circle cx="786.25" cy="596.18" r="8.00" fill="rgba(33,143,141,1.0000)"/>
+  <circle cx="516.11" cy="770.45" r="8.00" fill="rgba(69,9,91,1.0000)"/>
+  <circle cx="635.29" cy="292.82" r="8.00" fill="rgba(50,102,141,1.0000)"/>
+  <circle cx="269.80" cy="654.27" r="8.00" fill="rgba(108,204,92,1.0000)"/>
+  <circle cx="849.82" cy="480.00" r="8.00" fill="rgba(67,60,131,1.0000)"/>
+  <circle cx="420.76" cy="241.18" r="8.00" fill="rgba(37,132,141,1.0000)"/>
+  <circle cx="547.89" cy="712.36" r="8.00" fill="rgba(55,90,140,1.0000)"/>
+  <circle cx="754.47" cy="402.55" r="8.00" fill="rgba(72,38,118,1.0000)"/>
+  <circle cx="166.51" cy="544.55" r="8.00" fill="rgba(253,231,37,1.0000)"/>
+  <circle cx="818.04" cy="196.00" r="8.00" fill="rgba(43,154,133,1.0000)"/>
+  <circle cx="492.27" cy="557.45" r="8.00" fill="rgba(60,79,138,1.0000)"/>
+</g>
+<g clip-path="url(#cp1)">
+  <defs><linearGradient id="lg1" x1="0%" y1="100%" x2="0%" y2="0%">
+    <stop offset="0%" stop-color="rgb(68,1,84)"/>
+    <stop offset="14%" stop-color="rgb(72,36,117)"/>
+    <stop offset="28%" stop-color="rgb(65,68,135)"/>
+    <stop offset="42%" stop-color="rgb(53,95,141)"/>
+    <stop offset="57%" stop-color="rgb(42,120,142)"/>
+    <stop offset="71%" stop-color="rgb(33,145,141)"/>
+    <stop offset="85%" stop-color="rgb(94,201,98)"/>
+    <stop offset="100%" stop-color="rgb(253,231,37)"/>
+  </linearGradient></defs>
+  <rect x="1005.00" y="196.00" width="24.00" height="568.00" fill="url(#lg1)"/>
+  <text x="1035.00" y="196.00" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">100</text>
+  <text x="1035.00" y="480.00" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">50</text>
+  <text x="1035.00" y="764.00" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">0</text>
+</g>
+<g clip-path="url(#cp2)">
+  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
+    <tspan x="600.00" dy="0.0">Continuous color scale</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp3)">
+  <rect x="95.00" y="834.50" width="874.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="134.23" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="134.73" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">0</text>
+  <rect x="293.14" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="293.64" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">2</text>
+  <rect x="452.05" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="452.55" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">4</text>
+  <rect x="610.95" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="611.45" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">6</text>
+  <rect x="769.86" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="770.36" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">8</text>
+  <rect x="928.77" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="929.27" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">10</text>
+  <text x="532.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
+    <tspan x="532.00" dy="0.0">x</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp4)">
+  <rect x="94.50" y="125.00" width="1.00" height="710.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="92.00" y="802.23" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="802.73" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">0</text>
+  <rect x="92.00" y="673.14" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="673.64" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">2</text>
+  <rect x="92.00" y="544.05" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="544.55" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">4</text>
+  <rect x="92.00" y="414.95" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="415.45" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">6</text>
+  <rect x="92.00" y="285.86" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="286.36" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">8</text>
+  <rect x="92.00" y="156.77" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">10</text>
+  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,480.00)">y</text>
+</g>
+</svg>
