@@ -57,3 +57,4 @@ snapshot_test!(geom_text, "geom_text.gg", "iris-mock.csv");
 snapshot_test!(scatter_color_continuous, "scatter_color_continuous.gg", "scatter_color_continuous.csv");
 snapshot_test!(theme_overrides, "theme_overrides.gg", "iris-mock.csv");
 snapshot_test!(theme_file, "theme_file.gg", "iris-mock.csv");
+snapshot_test!(log_scale, "log_scale.gg", "log_scale.csv");

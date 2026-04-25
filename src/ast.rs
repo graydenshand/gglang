@@ -38,6 +38,7 @@ pub enum FacetSpec {
 pub enum ScaleType {
     Continuous,
     Discrete,
+    Log,
 }
 
 #[derive(Debug)]
@@ -409,6 +410,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                         let scale_type = match type_str {
                             "CONTINUOUS" => ScaleType::Continuous,
                             "DISCRETE" => ScaleType::Discrete,
+                            "LOG" => ScaleType::Log,
                             other => {
                                 return Err(GglangError::Parse {
                                     message: format!("Unsupported scale type: {}", other),
@@ -979,6 +981,28 @@ mod tests {
         match &program.statements[0] {
             Statement::Scale(AstAesthetic::Y, ScaleType::Continuous) => {}
             _ => panic!("Expected Scale(Y, Continuous)"),
+        }
+    }
+
+    #[test]
+    fn test_parse_scale_y_log() {
+        let source = "SCALE Y LOG";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Scale(AstAesthetic::Y, ScaleType::Log) => {}
+            _ => panic!("Expected Scale(Y, Log)"),
+        }
+    }
+
+    #[test]
+    fn test_parse_scale_x_log() {
+        let source = "SCALE X LOG";
+        let program = parse(source).expect("Parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Scale(AstAesthetic::X, ScaleType::Log) => {}
+            _ => panic!("Expected Scale(X, Log)"),
         }
     }
 

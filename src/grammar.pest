@@ -34,7 +34,7 @@ coord_start     = { "START" ~ number }
 // Scale Statement
 scale_statement = { "SCALE" ~ scale_target ~ scale_type }
 scale_target    = { "X" | "Y" | "COLOR" | "FILL" }
-scale_type      = { "CONTINUOUS" | "DISCRETE" }
+scale_type      = { "CONTINUOUS" | "DISCRETE" | "LOG" }
 
 // Title Statement
 title_statement = { "TITLE" ~ string_literal }

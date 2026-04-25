@@ -1,0 +1,7 @@
+MAP x=:gdp_per_capita, y=:population
+GEOM POINT
+SCALE X LOG
+SCALE Y LOG
+TITLE "Population vs GDP per capita (log-log)"
+XLABEL "GDP per capita (USD)"
+YLABEL "Population"

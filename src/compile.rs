@@ -3,7 +3,7 @@ use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralVa
 use crate::error::GglangError;
 use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint, GeomText};
 use crate::plot::{Blueprint, CoordinateSystem, Layer};
-use crate::scale::{Axis, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
+use crate::scale::{Axis, ScaleLogContinuous, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
 use crate::theme::Theme;
 use std::collections::HashMap;
 use std::path::Path;
@@ -117,8 +117,10 @@ pub fn compile(
                 let scale: Box<dyn crate::scale::Scale> = match (aes, scale_type) {
                     (Aesthetic::X, ScaleType::Continuous) => Box::new(ScalePositionContinuous::new(Axis::X)),
                     (Aesthetic::X, ScaleType::Discrete) => Box::new(ScalePositionDiscrete::new(Axis::X)),
+                    (Aesthetic::X, ScaleType::Log) => Box::new(ScaleLogContinuous::new(Axis::X)),
                     (Aesthetic::Y, ScaleType::Continuous) => Box::new(ScalePositionContinuous::new(Axis::Y)),
                     (Aesthetic::Y, ScaleType::Discrete) => Box::new(ScalePositionDiscrete::new(Axis::Y)),
+                    (Aesthetic::Y, ScaleType::Log) => Box::new(ScaleLogContinuous::new(Axis::Y)),
                     _ => return Err(GglangError::Compile {
                         message: format!("Unsupported SCALE combination for aesthetic '{}'", aes.name()),
                     }),

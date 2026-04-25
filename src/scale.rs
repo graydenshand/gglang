@@ -135,18 +135,7 @@ impl ScalePositionContinuous {
         }
     }
 
-    fn render_x_axis(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
-        let mut elements = vec![];
-
-        // Axis line: full width at top of gutter (adjacent to DataArea)
-        let xaxis = Rectangle::new(
-            [Unit::NDC(0.0), Unit::NDC(1.0)],
-            Unit::NDC(2.0),
-            Unit::Pixels(1),
-            theme.axis_color,
-        );
-        elements.push(Element::Rect(xaxis));
-
+    fn render_continuous_axis(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
         let s = self.data_scale.as_ref().ok_or_else(|| GglangError::Render {
             message: "Scale must be fit before rendering".to_string(),
         })?;
@@ -157,77 +146,12 @@ impl ScalePositionContinuous {
             message: "Scale must be fit before rendering".to_string(),
         })?;
         let tick_values = ticks_from_step(tick_min, tick_max, step);
+        let tick_ndcs: Vec<f32> = tick_values
+            .iter()
+            .map(|&v| s.map_position(&NDC_SCALE, v) as f32)
+            .collect();
         let labels = format_ticks(&tick_values);
-        for (tick_value, label) in tick_values.iter().zip(labels) {
-            let x_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
-
-            // Tick mark hangs down from top edge
-            let tick = Rectangle::new(
-                [Unit::NDC(x_ndc), Unit::NDC(1.0)],
-                Unit::Pixels(1),
-                Unit::Pixels(6),
-                theme.axis_color,
-            );
-            elements.push(Element::Rect(tick));
-
-            // Tick label just below tick marks
-            elements.push(Element::Text(Text::centered(
-                label,
-                theme.tick_label_font_size,
-                (Unit::NDC(x_ndc), Unit::NDC(0.8)),
-            )));
-        }
-
-        Ok((PlotRegion::XAxisGutter, elements))
-    }
-
-    fn render_y_axis(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
-        let mut elements: Vec<Element> = vec![];
-
-        // Axis line: at right edge of gutter (adjacent to DataArea), full height
-        let yaxis = Rectangle::new(
-            [Unit::NDC(1.0), Unit::NDC(0.0)],
-            Unit::Pixels(1),
-            Unit::NDC(2.0),
-            theme.axis_color,
-        );
-        elements.push(Element::Rect(yaxis));
-
-        let s = self.data_scale.as_ref().ok_or_else(|| GglangError::Render {
-            message: "Scale must be fit before rendering".to_string(),
-        })?;
-        let (tick_min, tick_max) = self.tick_bounds.ok_or_else(|| GglangError::Render {
-            message: "Scale must be fit before rendering".to_string(),
-        })?;
-        let step = self.tick_step.ok_or_else(|| GglangError::Render {
-            message: "Scale must be fit before rendering".to_string(),
-        })?;
-        let tick_values = ticks_from_step(tick_min, tick_max, step);
-        let labels = format_ticks(&tick_values);
-        for (tick_value, label) in tick_values.iter().zip(labels) {
-            let y_ndc = s.map_position(&NDC_SCALE, *tick_value) as f32;
-
-            // Tick mark protrudes left from right edge
-            let tick = Rectangle::new(
-                [Unit::NDC(1.0), Unit::NDC(y_ndc)],
-                Unit::Pixels(6),
-                Unit::Pixels(1),
-                theme.axis_color,
-            );
-            elements.push(Element::Rect(tick));
-            // Tick label: right-aligned, flush against the tick mark with a small gap
-            elements.push(Element::Text(
-                Text::new(
-                    label,
-                    theme.tick_label_font_size,
-                    (Unit::Percent(85.0), Unit::NDC(y_ndc)),
-                )
-                .with_h_align(HAlign::Right)
-                .with_v_align(VAlign::Center),
-            ));
-        }
-
-        Ok((PlotRegion::YAxisGutter, elements))
+        Ok(render_axis(self.axis, &tick_ndcs, &labels, theme))
     }
 }
 
@@ -273,10 +197,7 @@ impl Scale for ScalePositionContinuous {
     }
 
     fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
-        match self.axis {
-            Axis::X => self.render_x_axis(theme),
-            Axis::Y => self.render_y_axis(theme),
-        }
+        self.render_continuous_axis(theme)
     }
 
     fn aesthetic_family(&self) -> AestheticFamily {
@@ -301,6 +222,203 @@ impl Scale for ScalePositionContinuous {
 
     fn clone_unfitted(&self) -> Box<dyn Scale> {
         Box::new(ScalePositionContinuous::new(self.axis))
+    }
+}
+
+/// Render a positional axis (X or Y) given pre-computed tick NDC positions and labels.
+fn render_axis(
+    axis: Axis,
+    tick_ndcs: &[f32],
+    tick_labels: &[String],
+    theme: &Theme,
+) -> (PlotRegion, Vec<Element>) {
+    let mut elements = vec![];
+    match axis {
+        Axis::X => {
+            elements.push(Element::Rect(Rectangle::new(
+                [Unit::NDC(0.0), Unit::NDC(1.0)],
+                Unit::NDC(2.0),
+                Unit::Pixels(1),
+                theme.axis_color,
+            )));
+            for (x_ndc, label) in tick_ndcs.iter().zip(tick_labels.iter()) {
+                elements.push(Element::Rect(Rectangle::new(
+                    [Unit::NDC(*x_ndc), Unit::NDC(1.0)],
+                    Unit::Pixels(1),
+                    Unit::Pixels(6),
+                    theme.axis_color,
+                )));
+                elements.push(Element::Text(Text::centered(
+                    label.clone(),
+                    theme.tick_label_font_size,
+                    (Unit::NDC(*x_ndc), Unit::NDC(0.8)),
+                )));
+            }
+            (PlotRegion::XAxisGutter, elements)
+        }
+        Axis::Y => {
+            elements.push(Element::Rect(Rectangle::new(
+                [Unit::NDC(1.0), Unit::NDC(0.0)],
+                Unit::Pixels(1),
+                Unit::NDC(2.0),
+                theme.axis_color,
+            )));
+            for (y_ndc, label) in tick_ndcs.iter().zip(tick_labels.iter()) {
+                elements.push(Element::Rect(Rectangle::new(
+                    [Unit::NDC(1.0), Unit::NDC(*y_ndc)],
+                    Unit::Pixels(6),
+                    Unit::Pixels(1),
+                    theme.axis_color,
+                )));
+                elements.push(Element::Text(
+                    Text::new(
+                        label.clone(),
+                        theme.tick_label_font_size,
+                        (Unit::Percent(85.0), Unit::NDC(*y_ndc)),
+                    )
+                    .with_h_align(HAlign::Right)
+                    .with_v_align(VAlign::Center),
+                ));
+            }
+            (PlotRegion::YAxisGutter, elements)
+        }
+    }
+}
+
+/// Format each tick value independently with its own SI suffix.
+/// Used for log scales where values span multiple orders of magnitude,
+/// so a shared suffix would produce labels like "0.0001B" for the small end.
+fn format_log_ticks(values: &[f64]) -> Vec<String> {
+    values
+        .iter()
+        .map(|&v| {
+            let abs = v.abs();
+            let (divisor, suffix) = if abs >= 1_000_000_000.0 {
+                (1_000_000_000.0, "B")
+            } else if abs >= 1_000_000.0 {
+                (1_000_000.0, "M")
+            } else if abs >= 1_000.0 {
+                (1_000.0, "K")
+            } else {
+                (1.0, "")
+            };
+            let scaled = v / divisor;
+            let need_decimals = scaled.fract().abs() > 1e-9;
+            if need_decimals {
+                format!("{:.1}{}", scaled, suffix)
+            } else {
+                format!("{}{}", scaled as i64, suffix)
+            }
+        })
+        .collect()
+}
+
+/// A log10 positional scale for data spanning multiple orders of magnitude.
+pub struct ScaleLogContinuous {
+    axis: Axis,
+    raw_min: f64,
+    raw_max: f64,
+    log_scale: Option<ContinuousNumericScale>,
+    tick_values: Vec<f64>,
+}
+
+impl ScaleLogContinuous {
+    pub fn new(axis: Axis) -> Self {
+        Self {
+            axis,
+            raw_min: f64::INFINITY,
+            raw_max: f64::NEG_INFINITY,
+            log_scale: None,
+            tick_values: vec![],
+        }
+    }
+}
+
+impl Scale for ScaleLogContinuous {
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
+        let vals = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
+        for &val in &vals {
+            if !val.is_finite() || val <= 0.0 {
+                return Err(GglangError::Render {
+                    message: format!(
+                        "Log scale requires positive finite values; got {} on {:?} axis",
+                        val, self.axis
+                    ),
+                });
+            }
+            if val < self.raw_min { self.raw_min = val; }
+            if val > self.raw_max { self.raw_max = val; }
+        }
+        Ok(())
+    }
+
+    fn fit(&mut self) -> Result<(), GglangError> {
+        let (mut lo, mut hi) = if self.raw_min.is_infinite() {
+            (1.0, 10.0)
+        } else {
+            (self.raw_min, self.raw_max)
+        };
+        if (hi / lo - 1.0).abs() < 1e-12 {
+            lo /= 10.0;
+            hi *= 10.0;
+        }
+        let log_min = lo.log10().floor();
+        let log_max = hi.log10().ceil();
+        let expand = (log_max - log_min) * SCALE_EXPAND_MULT;
+        self.log_scale = Some(ContinuousNumericScale {
+            min: log_min - expand,
+            max: log_max + expand,
+        });
+        self.tick_values = (log_min as i32..=log_max as i32)
+            .map(|exp| 10f64.powi(exp))
+            .collect();
+        Ok(())
+    }
+
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
+        let vals = v.as_f64().map_err(|e| GglangError::Render { message: e })?;
+        let s = self.log_scale.as_ref().ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before mapping".to_string(),
+        })?;
+        let units: Result<Vec<Unit>, GglangError> = vals
+            .iter()
+            .map(|&val| {
+                if !val.is_finite() || val <= 0.0 {
+                    return Err(GglangError::Render {
+                        message: format!(
+                            "Log scale requires positive finite values; got {} on {:?} axis",
+                            val, self.axis
+                        ),
+                    });
+                }
+                Ok(Unit::NDC(s.map_position(&NDC_SCALE, val.log10()) as f32))
+            })
+            .collect();
+        Ok(MappedColumn::UnitArray(units?))
+    }
+
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        let s = self.log_scale.as_ref().ok_or_else(|| GglangError::Render {
+            message: "Scale must be fit before rendering".to_string(),
+        })?;
+        let tick_ndcs: Vec<f32> = self
+            .tick_values
+            .iter()
+            .map(|&v| s.map_position(&NDC_SCALE, v.log10()) as f32)
+            .collect();
+        let labels = format_log_ticks(&self.tick_values);
+        Ok(render_axis(self.axis, &tick_ndcs, &labels, theme))
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        match self.axis {
+            Axis::X => AestheticFamily::HorizontalPosition,
+            Axis::Y => AestheticFamily::VerticalPosition,
+        }
+    }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScaleLogContinuous::new(self.axis))
     }
 }
 
@@ -1243,5 +1361,91 @@ mod test {
         let scale = default_scale_for(&Aesthetic::Color, Some(&col));
         assert!(scale.is_some());
         assert_eq!(scale.unwrap().aesthetic_family(), AestheticFamily::Color);
+    }
+
+    #[test]
+    fn scale_log_maps_powers_of_ten_to_ndc() {
+        let mut scale = ScaleLogContinuous::new(Axis::Y);
+        scale.append(&RawColumn::FloatArray(vec![1.0, 10.0, 100.0, 1000.0])).unwrap();
+        scale.fit().unwrap();
+
+        let mapped = scale.map(&RawColumn::FloatArray(vec![1.0, 10.0, 100.0, 1000.0])).unwrap();
+        match mapped {
+            MappedColumn::UnitArray(units) => {
+                assert_eq!(units.len(), 4);
+                // Monotonically increasing Y (higher values map to higher NDC)
+                let ndcs: Vec<f32> = units.iter().map(|u| match u {
+                    Unit::NDC(v) => *v,
+                    _ => panic!("Expected NDC"),
+                }).collect();
+                assert!(ndcs[0] < ndcs[1], "10 should map higher than 1");
+                assert!(ndcs[1] < ndcs[2], "100 should map higher than 10");
+                assert!(ndcs[2] < ndcs[3], "1000 should map higher than 100");
+                // Equal spacing in log space: gaps should be equal
+                let gap01 = ndcs[1] - ndcs[0];
+                let gap12 = ndcs[2] - ndcs[1];
+                let gap23 = ndcs[3] - ndcs[2];
+                assert!((gap01 - gap12).abs() < 1e-4, "Log spacing should be uniform");
+                assert!((gap12 - gap23).abs() < 1e-4, "Log spacing should be uniform");
+            }
+            _ => panic!("Expected UnitArray"),
+        }
+    }
+
+    #[test]
+    fn scale_log_rejects_zero() {
+        let mut scale = ScaleLogContinuous::new(Axis::Y);
+        let result = scale.append(&RawColumn::FloatArray(vec![1.0, 0.0, 10.0]));
+        assert!(result.is_err(), "Should reject zero");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("positive"), "Error should mention positive: {}", msg);
+    }
+
+    #[test]
+    fn scale_log_rejects_negative() {
+        let mut scale = ScaleLogContinuous::new(Axis::X);
+        let result = scale.append(&RawColumn::FloatArray(vec![1.0, -5.0]));
+        assert!(result.is_err(), "Should reject negative value");
+    }
+
+    #[test]
+    fn scale_log_degenerate_domain_does_not_panic() {
+        let mut scale = ScaleLogContinuous::new(Axis::Y);
+        scale.append(&RawColumn::FloatArray(vec![100.0, 100.0])).unwrap();
+        scale.fit().unwrap();
+        let mapped = scale.map(&RawColumn::FloatArray(vec![100.0])).unwrap();
+        match mapped {
+            MappedColumn::UnitArray(units) => {
+                assert_eq!(units.len(), 1);
+                match units[0] {
+                    Unit::NDC(v) => assert!(v.is_finite(), "Mapped value should be finite"),
+                    _ => panic!("Expected NDC"),
+                }
+            }
+            _ => panic!("Expected UnitArray"),
+        }
+    }
+
+    #[test]
+    fn scale_log_render_produces_axis_ticks() {
+        let mut scale = ScaleLogContinuous::new(Axis::Y);
+        scale.append(&RawColumn::FloatArray(vec![10.0, 10000.0])).unwrap();
+        scale.fit().unwrap();
+
+        let theme = crate::theme::Theme::default();
+        let (region, elements) = scale.render(&theme).unwrap();
+        assert_eq!(region, PlotRegion::YAxisGutter);
+        // Domain 10..10000 → ticks at 10, 100, 1000, 10000 (4 ticks)
+        // 1 axis line + 4 ticks + 4 labels = 9 elements
+        assert_eq!(elements.len(), 9, "Expected 1 axis + 4 ticks + 4 labels");
+    }
+
+    #[test]
+    fn format_log_ticks_uses_per_value_suffix() {
+        let labels = format_log_ticks(&[100.0, 1000.0, 1_000_000.0, 1_000_000_000.0]);
+        assert_eq!(labels[0], "100");
+        assert_eq!(labels[1], "1K");
+        assert_eq!(labels[2], "1M");
+        assert_eq!(labels[3], "1B");
     }
 }

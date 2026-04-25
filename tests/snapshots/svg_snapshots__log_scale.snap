@@ -1,0 +1,60 @@
+---
+source: tests/svg_snapshots.rs
+expression: svg
+---
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+<rect x="0" y="0" width="1200" height="900" fill="white"/>
+<defs>
+  <clipPath id="cp0"><rect x="95.00" y="125.00" width="1090.00" height="710.00"/></clipPath>
+  <clipPath id="cp1"><rect x="15.00" y="15.00" width="1170.00" height="110.00"/></clipPath>
+  <clipPath id="cp2"><rect x="71.00" y="835.00" width="1138.00" height="50.00"/></clipPath>
+  <clipPath id="cp3"><rect x="-9.00" y="113.00" width="104.00" height="734.00"/></clipPath>
+</defs>
+<g clip-path="url(#cp0)">
+  <circle cx="691.43" cy="267.50" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="304.19" cy="267.90" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="1042.76" cy="348.52" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="583.76" cy="373.06" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="293.69" cy="373.86" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="968.37" cy="425.90" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="938.29" cy="437.91" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="1006.82" cy="490.98" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="732.91" cy="508.56" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="948.79" cy="583.41" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="1043.42" cy="574.13" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="1052.47" cy="729.38" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+</g>
+<g clip-path="url(#cp1)">
+  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
+    <tspan x="600.00" dy="0.0">Population vs GDP per capita (log-log)</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp2)">
+  <rect x="95.00" y="834.50" width="1090.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="144.05" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="144.55" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">1K</text>
+  <rect x="639.50" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="640.00" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">10K</text>
+  <rect x="1134.95" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="1135.45" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">100K</text>
+  <text x="640.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
+    <tspan x="640.00" dy="0.0">GDP per capita (USD)</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp3)">
+  <rect x="94.50" y="125.00" width="1.00" height="710.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="92.00" y="802.23" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="802.73" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">100K</text>
+  <rect x="92.00" y="673.14" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="673.64" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">1M</text>
+  <rect x="92.00" y="544.05" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="544.55" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">10M</text>
+  <rect x="92.00" y="414.95" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="415.45" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">100M</text>
+  <rect x="92.00" y="285.86" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="286.36" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">1B</text>
+  <rect x="92.00" y="156.77" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">10B</text>
+  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,480.00)">Population</text>
+</g>
+</svg>
