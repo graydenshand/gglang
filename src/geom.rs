@@ -294,6 +294,8 @@ fn linear_y_params(raw_y: &[f64], mapped_y: &[Unit]) -> (f32, f32) {
 /// Extra aesthetics: `Y`, `Fill`, `Color`
 pub struct GeomBar {
     pub position: BarPosition,
+    /// Fraction of band width used by each bar. 0.8 = padded (bar charts), 1.0 = touching (histograms).
+    pub width_factor: f32,
 }
 
 impl Geometry for GeomBar {
@@ -355,9 +357,19 @@ impl Geometry for GeomBar {
                 }
             }
         }
-        let n_categories = distinct_x.len().max(1);
-        let band_width = 2.0 / n_categories as f32;
-        let bar_width = band_width * 0.8; // 80% of band for padding
+        distinct_x.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let band_width = if distinct_x.len() >= 2 {
+            // Use actual minimum spacing between adjacent NDC positions.
+            // Discrete scales place n categories at 2/n intervals (unchanged).
+            // Continuous scales (histograms) span [-1,1] across n centers, giving
+            // 2/(n-1) intervals — wider than 2/n, fixing histogram bar overlap.
+            distinct_x.windows(2)
+                .map(|w| w[1] - w[0])
+                .fold(f32::INFINITY, f32::min)
+        } else {
+            2.0
+        };
+        let bar_width = band_width * self.width_factor;
 
         let default_color = [0.35, 0.55, 0.75, 1.0]; // steel blue default
 
@@ -427,7 +439,7 @@ impl Geometry for GeomBar {
                 }
 
                 // Track cumulative NDC offset per x category index
-                let mut x_offsets: Vec<f32> = vec![y_zero_ndc; n_categories];
+                let mut x_offsets: Vec<f32> = vec![y_zero_ndc; distinct_x.len().max(1)];
 
                 for fill_group in &fill_groups {
                     for i in 0..n {

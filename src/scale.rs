@@ -789,6 +789,95 @@ impl StatTransform for StatCount {
     }
 }
 
+/// Statistical transform that bins a continuous X variable and counts observations per bin.
+/// If a fill aesthetic is present, counts per (bin, fill) group.
+/// Produces FloatArray X (bin centers) and FloatArray Y (counts), with zero-count rows for empty bins.
+pub struct StatBin {
+    pub bins: Option<usize>,
+}
+
+impl StatTransform for StatBin {
+    fn transform(&self, data: &AesData) -> AesData {
+        let x_col = match data.get(Aesthetic::X) {
+            Some(col) => col,
+            None => return data.clone(),
+        };
+        let x_vals: Vec<f64> = match x_col.as_f64() {
+            Ok(v) if !v.is_empty() => v,
+            _ => return data.clone(),
+        };
+
+        let n = x_vals.len();
+        let x_min = x_vals.iter().cloned().fold(f64::INFINITY, f64::min);
+        let x_max = x_vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+        // Sturges' rule: ceil(log2(n) + 1), minimum 1
+        let n_bins = self.bins.unwrap_or_else(|| {
+            ((n as f64).log2().ceil() as usize + 1).max(1)
+        }).max(1);
+
+        // Handle degenerate single-value case
+        let (effective_min, bin_width) = if (x_max - x_min).abs() < f64::EPSILON {
+            (x_min - 0.5, 1.0)
+        } else {
+            (x_min, (x_max - x_min) / n_bins as f64)
+        };
+
+        let bin_index = |x: f64| -> usize {
+            let idx = ((x - effective_min) / bin_width).floor() as i64;
+            idx.max(0).min(n_bins as i64 - 1) as usize
+        };
+
+        let bin_center = |i: usize| -> f64 {
+            effective_min + (i as f64 + 0.5) * bin_width
+        };
+
+        let mut result = AesData::new();
+
+        if let Some(RawColumn::StringArray(fill_vals)) = data.get(Aesthetic::Fill) {
+            let mut fill_groups: Vec<String> = vec![];
+            for f in fill_vals {
+                if !fill_groups.contains(f) {
+                    fill_groups.push(f.clone());
+                }
+            }
+
+            // Count per (bin_index, fill_group)
+            let mut counts: Vec<Vec<usize>> = vec![vec![0; fill_groups.len()]; n_bins];
+            for (x, f) in x_vals.iter().zip(fill_vals.iter()) {
+                let bi = bin_index(*x);
+                let fi = fill_groups.iter().position(|g| g == f).unwrap_or(0);
+                counts[bi][fi] += 1;
+            }
+
+            let mut out_x = vec![];
+            let mut out_y = vec![];
+            let mut out_fill = vec![];
+            for bi in 0..n_bins {
+                for (fi, fg) in fill_groups.iter().enumerate() {
+                    out_x.push(bin_center(bi));
+                    out_y.push(counts[bi][fi] as f64);
+                    out_fill.push(fg.clone());
+                }
+            }
+            result.insert(Aesthetic::X, RawColumn::FloatArray(out_x));
+            result.insert(Aesthetic::Y, RawColumn::FloatArray(out_y));
+            result.insert(Aesthetic::Fill, RawColumn::StringArray(out_fill));
+        } else {
+            let mut counts: Vec<usize> = vec![0; n_bins];
+            for x in &x_vals {
+                counts[bin_index(*x)] += 1;
+            }
+            let out_x: Vec<f64> = (0..n_bins).map(bin_center).collect();
+            let out_y: Vec<f64> = counts.iter().map(|&c| c as f64).collect();
+            result.insert(Aesthetic::X, RawColumn::FloatArray(out_x));
+            result.insert(Aesthetic::Y, RawColumn::FloatArray(out_y));
+        }
+
+        result
+    }
+}
+
 /// A continuous scale mapping numeric data to alpha transparency in [0.1, 1.0].
 pub struct ScaleAlphaContinuous {
     min: f64,

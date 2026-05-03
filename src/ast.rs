@@ -44,7 +44,7 @@ pub enum ScaleType {
 #[derive(Debug)]
 pub enum Statement {
     Map(Vec<DataMapping>),
-    Geom(GeometryType, Vec<GeomAttribute>, Option<PositionAdjustment>),
+    Geom(GeometryType, Vec<GeomAttribute>, Option<usize>, Option<PositionAdjustment>),
     Scale(AstAesthetic, ScaleType),
     Facet(FacetSpec),
     Title(String),
@@ -102,6 +102,7 @@ pub enum GeometryType {
     Line,
     Bar,
     Text,
+    Histogram,
 }
 
 #[derive(Debug, Clone)]
@@ -282,6 +283,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             "LINE" => GeometryType::Line,
                             "BAR" => GeometryType::Bar,
                             "TEXT" => GeometryType::Text,
+                            "HISTOGRAM" => GeometryType::Histogram,
                             other => {
                                 return Err(GglangError::Parse {
                                     message: format!("Unsupported geometry: {}", other),
@@ -289,6 +291,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                             }
                         };
                         let mut attrs = vec![];
+                        let mut bins: Option<usize> = None;
                         let mut position = None;
                         for pair in inner {
                             if pair.as_rule() == Rule::position_adjustment {
@@ -297,6 +300,19 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                     "DODGE" => PositionAdjustment::Dodge,
                                     _ => unreachable!(),
                                 });
+                            } else if pair.as_rule() == Rule::bins_modifier {
+                                let n: usize = pair
+                                    .into_inner()
+                                    .next()
+                                    .ok_or_else(|| GglangError::Parse {
+                                        message: "Expected integer in BINS modifier".to_string(),
+                                    })?
+                                    .as_str()
+                                    .parse()
+                                    .map_err(|_| GglangError::Parse {
+                                        message: "Invalid integer in BINS modifier".to_string(),
+                                    })?;
+                                bins = Some(n);
                             } else if pair.as_rule() == Rule::geom_attributes {
                                 for attr_pair in pair.into_inner() {
                                     if attr_pair.as_rule() == Rule::geom_attribute {
@@ -380,7 +396,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                 }
                             }
                         }
-                        statements.push(Statement::Geom(geom_type, attrs, position));
+                        statements.push(Statement::Geom(geom_type, attrs, bins, position));
                     }
                     Rule::scale_statement => {
                         let mut inner = stmt_inner.into_inner();
@@ -656,7 +672,7 @@ mod tests {
         }
 
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs, _) => assert!(attrs.is_empty()),
+            Statement::Geom(GeometryType::Point, attrs, _, _) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Point statement"),
         }
     }
@@ -697,7 +713,7 @@ mod tests {
         }
 
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Line, attrs, _) => assert!(attrs.is_empty()),
+            Statement::Geom(GeometryType::Line, attrs, _, _) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Line statement"),
         }
     }
@@ -732,7 +748,7 @@ mod tests {
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 2);
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs, _) => {
+            Statement::Geom(GeometryType::Point, attrs, _, _) => {
                 assert_eq!(attrs.len(), 1);
                 match &attrs[0] {
                     GeomAttribute::Constant(AstAesthetic::Color, LiteralValue::Str(s)) => {
@@ -751,7 +767,7 @@ mod tests {
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 2);
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs, _) => {
+            Statement::Geom(GeometryType::Point, attrs, _, _) => {
                 assert_eq!(attrs.len(), 1);
                 match &attrs[0] {
                     GeomAttribute::Mapped(AstAesthetic::Y, col) => {
@@ -769,7 +785,7 @@ mod tests {
         let source = "GEOM LINE { y=:revenue, color=\"#0000FF\" }";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Line, attrs, _) => {
+            Statement::Geom(GeometryType::Line, attrs, _, _) => {
                 assert_eq!(attrs.len(), 2);
             }
             _ => panic!("Expected Geom Line"),
@@ -957,7 +973,7 @@ mod tests {
         let source = "GEOM POINT";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Point, attrs, _) => assert!(attrs.is_empty()),
+            Statement::Geom(GeometryType::Point, attrs, _, _) => assert!(attrs.is_empty()),
             _ => panic!("Expected Geom Point with no attrs"),
         }
     }
@@ -1023,7 +1039,7 @@ mod tests {
         let program = parse(source).expect("Parse should succeed");
         assert_eq!(program.statements.len(), 2);
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Bar, attrs, pos) => {
+            Statement::Geom(GeometryType::Bar, attrs, _, pos) => {
                 assert!(attrs.is_empty());
                 assert!(pos.is_none());
             }
@@ -1036,7 +1052,7 @@ mod tests {
         let source = "GEOM BAR DODGE";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Bar, _, pos) => {
+            Statement::Geom(GeometryType::Bar, _, _, pos) => {
                 assert!(matches!(pos, Some(PositionAdjustment::Dodge)));
             }
             _ => panic!("Expected Geom Bar with Dodge"),
@@ -1048,7 +1064,7 @@ mod tests {
         let source = "GEOM BAR STACK";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Bar, _, pos) => {
+            Statement::Geom(GeometryType::Bar, _, _, pos) => {
                 assert!(matches!(pos, Some(PositionAdjustment::Stack)));
             }
             _ => panic!("Expected Geom Bar with Stack"),
@@ -1060,7 +1076,7 @@ mod tests {
         let source = "GEOM BAR { fill=:region } DODGE";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Bar, attrs, pos) => {
+            Statement::Geom(GeometryType::Bar, attrs, _, pos) => {
                 assert_eq!(attrs.len(), 1);
                 assert!(matches!(&attrs[0], GeomAttribute::Mapped(AstAesthetic::Fill, _)));
                 assert!(matches!(pos, Some(PositionAdjustment::Dodge)));
@@ -1088,7 +1104,7 @@ mod tests {
         let source = "GEOM POINT";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[0] {
-            Statement::Geom(GeometryType::Point, _, pos) => {
+            Statement::Geom(GeometryType::Point, _, _, pos) => {
                 assert!(pos.is_none());
             }
             _ => panic!("Expected Geom Point"),
@@ -1114,7 +1130,7 @@ mod tests {
         let source = "MAP x=:x, y=:y\nGEOM POINT { alpha=0.3 }";
         let program = parse(source).expect("Parse should succeed");
         match &program.statements[1] {
-            Statement::Geom(GeometryType::Point, attrs, _) => {
+            Statement::Geom(GeometryType::Point, attrs, _, _) => {
                 assert_eq!(attrs.len(), 1);
                 match &attrs[0] {
                     GeomAttribute::Constant(AstAesthetic::Alpha, LiteralValue::Number(n)) => {

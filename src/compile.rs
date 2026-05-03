@@ -3,7 +3,7 @@ use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralVa
 use crate::error::GglangError;
 use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint, GeomText};
 use crate::plot::{Blueprint, CoordinateSystem, Layer};
-use crate::scale::{Axis, ScaleLogContinuous, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatCount};
+use crate::scale::{Axis, ScaleLogContinuous, ScalePositionContinuous, ScalePositionDiscrete, IdentityTransform, StatBin, StatCount};
 use crate::theme::Theme;
 use std::collections::HashMap;
 use std::path::Path;
@@ -50,7 +50,7 @@ pub fn compile(
                     });
                 }
             }
-            Statement::Geom(geom_type, geom_attrs, position) => {
+            Statement::Geom(geom_type, geom_attrs, bins, position) => {
                 let mut layer_mappings: Vec<Mapping> = vec![];
                 let mut layer_constants: HashMap<Aesthetic, ConstantValue> = HashMap::new();
                 for attr in geom_attrs {
@@ -79,9 +79,14 @@ pub fn compile(
                         }
                     }
                 }
-                if position.is_some() && !matches!(geom_type, GeometryType::Bar) {
+                if position.is_some() && !matches!(geom_type, GeometryType::Bar | GeometryType::Histogram) {
                     return Err(GglangError::Compile {
-                        message: "Position adjustment (STACK/DODGE) is only supported on GEOM BAR".to_string(),
+                        message: "Position adjustment (STACK/DODGE) is only supported on GEOM BAR and GEOM HISTOGRAM".to_string(),
+                    });
+                }
+                if bins.is_some() && !matches!(geom_type, GeometryType::Histogram) {
+                    return Err(GglangError::Compile {
+                        message: "BINS modifier is only valid on GEOM HISTOGRAM".to_string(),
                     });
                 }
                 let (geom, stat): (Box<dyn crate::geom::Geometry>, Box<dyn crate::scale::StatTransform>) = match geom_type {
@@ -101,7 +106,15 @@ pub fn compile(
                         } else {
                             Box::new(StatCount)
                         };
-                        (Box::new(GeomBar { position: bar_position }), stat)
+                        (Box::new(GeomBar { position: bar_position, width_factor: 0.8 }), stat)
+                    }
+                    GeometryType::Histogram => {
+                        let bar_position = match position {
+                            Some(PositionAdjustment::Dodge) => BarPosition::Dodge,
+                            _ => BarPosition::Stack,
+                        };
+                        (Box::new(GeomBar { position: bar_position, width_factor: 1.0 }),
+                         Box::new(StatBin { bins: *bins }))
                     }
                 };
                 bp = bp.with_layer(Layer::new(

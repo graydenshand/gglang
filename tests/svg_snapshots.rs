@@ -58,3 +58,6 @@ snapshot_test!(scatter_color_continuous, "scatter_color_continuous.gg", "scatter
 snapshot_test!(theme_overrides, "theme_overrides.gg", "iris-mock.csv");
 snapshot_test!(theme_file, "theme_file.gg", "iris-mock.csv");
 snapshot_test!(log_scale, "log_scale.gg", "log_scale.csv");
+snapshot_test!(histogram, "histogram.gg", "histogram.csv");
+snapshot_test!(histogram_fill, "histogram_fill.gg", "histogram.csv");
+snapshot_test!(histogram_dodge, "histogram_dodge.gg", "histogram.csv");

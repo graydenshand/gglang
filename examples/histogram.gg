@@ -1,0 +1,5 @@
+MAP x=:value
+GEOM HISTOGRAM BINS 15
+TITLE "Value Distribution"
+XLABEL "Value"
+YLABEL "Count"

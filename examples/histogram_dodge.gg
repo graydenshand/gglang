@@ -1,0 +1,5 @@
+MAP x=:value, fill=:group
+GEOM HISTOGRAM BINS 15 DODGE
+TITLE "Value Distribution by Group (Dodged)"
+XLABEL "Value"
+YLABEL "Count"

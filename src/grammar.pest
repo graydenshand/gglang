@@ -56,12 +56,13 @@ aesthetic = { "x" | "y" | "color" | "fill" | "group" | "alpha" | "label" }
 data_reference = { ":" ~ identifier }
 
 // Geometry Statement
-geom_statement = { "GEOM" ~ geometry_type ~ geom_attributes? ~ position_adjustment? }
+geom_statement = { "GEOM" ~ geometry_type ~ geom_attributes? ~ bins_modifier? ~ position_adjustment? }
 position_adjustment = { "STACK" | "DODGE" }
+bins_modifier = { "BINS" ~ integer }
 geom_attributes = { "{" ~ geom_attribute ~ ("," ~ geom_attribute)* ~ "}" }
 geom_attribute = { aesthetic ~ "=" ~ attribute_value }
 attribute_value = { data_reference | string_literal | number }
-geometry_type = { "POINT" | "LINE" | "BAR" | "TEXT" }
+geometry_type = { "HISTOGRAM" | "POINT" | "LINE" | "BAR" | "TEXT" }
 
 // Facet Statement
 facet_statement = { "FACET" ~ (facet_wrap | facet_grid) }
