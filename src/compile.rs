@@ -1,4 +1,4 @@
-use crate::aesthetic::{parse_hex_color, Aesthetic, ConstantValue, Mapping};
+use crate::aesthetic::{parse_hex_color, parse_shape_name, Aesthetic, ConstantValue, Mapping};
 use crate::ast::{AstAesthetic, CoordType, GeomAttribute, GeometryType, LiteralValue, PositionAdjustment, Program, ScaleType, Statement, ThemeStatement};
 use crate::error::GglangError;
 use crate::geom::{BarPosition, GeomBar, GeomLine, GeomPoint, GeomText};
@@ -17,6 +17,7 @@ fn ast_aesthetic_to_aesthetic(aes: &AstAesthetic) -> Aesthetic {
         AstAesthetic::Group => Aesthetic::Group,
         AstAesthetic::Alpha => Aesthetic::Alpha,
         AstAesthetic::Label => Aesthetic::Label,
+        AstAesthetic::Shape => Aesthetic::Shape,
     }
 }
 
@@ -67,11 +68,19 @@ pub fn compile(
                             let aesthetic = ast_aesthetic_to_aesthetic(aes);
                             let constant = match val {
                                 LiteralValue::Str(s) => {
-                                    ConstantValue::Color(
-                                        parse_hex_color(s).map_err(|e| GglangError::Compile {
-                                            message: e,
-                                        })?,
-                                    )
+                                    if aesthetic == Aesthetic::Shape {
+                                        ConstantValue::Shape(
+                                            parse_shape_name(s).map_err(|e| GglangError::Compile {
+                                                message: e,
+                                            })?,
+                                        )
+                                    } else {
+                                        ConstantValue::Color(
+                                            parse_hex_color(s).map_err(|e| GglangError::Compile {
+                                                message: e,
+                                            })?,
+                                        )
+                                    }
                                 }
                                 LiteralValue::Number(n) => ConstantValue::Float(*n),
                             };

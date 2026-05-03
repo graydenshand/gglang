@@ -120,6 +120,10 @@ pub struct PointInstance {
     pub half_size: [f32; 2],
     /// RGBA color
     pub color: [f32; 4],
+    /// Shape glyph index (0=circle, 1=triangle, 2=square, 3=diamond, 4=cross)
+    pub shape_id: u32,
+    /// Padding to maintain 16-byte alignment for the instance struct.
+    pub _pad: [u32; 3],
 }
 impl PointInstance {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -141,6 +145,12 @@ impl PointInstance {
                     offset: (std::mem::size_of::<[f32; 2]>() * 2) as wgpu::BufferAddress,
                     shader_location: 5,
                     format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() * 2
+                        + std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                    shader_location: 6,
+                    format: wgpu::VertexFormat::Uint32,
                 },
             ],
         }
@@ -634,12 +644,15 @@ impl Frame {
                     Element::Point(p) => {
                         let cx = segment.abs_x(&p.position[0]);
                         let cy = segment.abs_y(&p.position[1]);
-                        let hw = segment.abs_width(&p.size) / 2.0;
-                        let hh = segment.abs_height(&p.size) / 2.0;
+                        let m = crate::shape::shape_size_multiplier(p.shape);
+                        let hw = segment.abs_width(&p.size) / 2.0 * m;
+                        let hh = segment.abs_height(&p.size) / 2.0 * m;
                         point_instances.push(PointInstance {
                             center: [cx, cy],
                             half_size: [hw, hh],
                             color: p.color,
+                            shape_id: p.shape,
+                            _pad: [0; 3],
                         });
                     }
                     Element::Polyline(poly) => {

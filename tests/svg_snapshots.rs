@@ -61,3 +61,4 @@ snapshot_test!(log_scale, "log_scale.gg", "log_scale.csv");
 snapshot_test!(histogram, "histogram.gg", "histogram.csv");
 snapshot_test!(histogram_fill, "histogram_fill.gg", "histogram.csv");
 snapshot_test!(histogram_dodge, "histogram_dodge.gg", "histogram.csv");
+snapshot_test!(scatter_shape, "scatter_shape.gg", "iris-mock.csv");

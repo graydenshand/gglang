@@ -98,9 +98,7 @@ fn render_element(svg: &mut String, element: &Element, seg: &WindowSegment, clip
             let cy = seg.px_y(&p.position[1]);
             let r = seg.px_width(&p.size) / 2.0;
             let fill = rgba_to_css(p.color);
-            svg.push_str(&format!(
-                "  <circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\"/>\n"
-            ));
+            svg.push_str(&render_point_shape(cx, cy, r, p.shape, &fill));
         }
 
         Element::Polyline(pl) => {
@@ -292,6 +290,54 @@ fn wrap_text(text: &str, max_width: f32, font_size: f32) -> Vec<String> {
         lines.push(String::new());
     }
     lines
+}
+
+/// Render a marker glyph for `Element::Point`. shape: 0=circle, 1=triangle,
+/// 2=square, 3=diamond, 4=cross. Unknown ids fall back to circle. The per-
+/// shape multipliers from `shape::shape_size_multiplier` make all glyphs
+/// occupy roughly equal screen area for the same nominal `r`.
+fn render_point_shape(cx: f32, cy: f32, r: f32, shape: u32, fill: &str) -> String {
+    let m = crate::shape::shape_size_multiplier(shape);
+    match shape {
+        1 => {
+            // Equilateral triangle, circumradius r·m, apex up.
+            let radius = r * m;
+            let half_base = radius * (3.0_f32).sqrt() / 2.0;
+            format!(
+                "  <polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\"/>\n",
+                cx, cy - radius,
+                cx - half_base, cy + radius * 0.5,
+                cx + half_base, cy + radius * 0.5,
+            )
+        }
+        2 => {
+            let half = r * m / (2.0_f32).sqrt();
+            format!(
+                "  <rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\"/>\n",
+                cx - half, cy - half, half * 2.0, half * 2.0,
+            )
+        }
+        3 => {
+            let v = r * m;
+            format!(
+                "  <polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\"/>\n",
+                cx, cy - v, cx + v, cy, cx, cy + v, cx - v, cy,
+            )
+        }
+        4 => {
+            // Plus sign: two overlapping rectangles.
+            let arm = r * m;
+            let thick = arm * 0.30;
+            format!(
+                "  <rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\"/>\n  <rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\"/>\n",
+                cx - arm, cy - thick, arm * 2.0, thick * 2.0,
+                cx - thick, cy - arm, thick * 2.0, arm * 2.0,
+            )
+        }
+        _ => format!(
+            "  <circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\"/>\n"
+        ),
+    }
 }
 
 fn rgba_to_css(color: [f32; 4]) -> String {

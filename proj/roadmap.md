@@ -31,7 +31,7 @@ Target: credible, demo-able grammar-of-graphics engine with core ggplot2 vocabul
 1. ~~**Theme overrides**~~ — `THEME { key=value }` inline overrides and `THEME FILE "path"` references. Blueprint now owns its merged theme; all 22 Theme fields are settable; stacking/inheritance works; `app::run` bug fixed.
 2. ~~**Log scale**~~ — `ScaleLogContinuous` for orders-of-magnitude data. `SCALE X LOG` / `SCALE Y LOG` syntax; log10 ticks with per-value SI suffixes; validates positive domain.
 3. ~~**Geom histogram**~~ (`stories/geom_histogram.md`) — `StatBin` + bar rendering for continuous distributions.
-4. **Shape aesthetic** (`stories/shape_aesthetic.md`) — Map categorical variable to point marker shape. New SDF functions in the point shader.
+4. ~~**Shape aesthetic**~~ — `Aesthetic::Shape`, `ScaleShapeDiscrete` (categorical → cycling palette of 5 glyphs: circle/triangle/square/diamond/cross). Constant `GEOM POINT { shape="triangle" }`. SDF branches in `fs_point`; SVG emits inline polygons. Shape legend renders point swatches.
 5. **Size aesthetic** (`stories/size_aesthetic.md`) — Map numeric variable to point radius for bubble charts.
 6. **Multi-legend layout** (`stories/multi_legend.md`) — Stack multiple legends (color, shape, size) in the legend region.
 7. **Error diagnostics** (`stories/error_diagnostics.md`) — Helpful parse/compile/data error messages with source locations and suggestions.
@@ -42,7 +42,8 @@ Target: credible, demo-able grammar-of-graphics engine with core ggplot2 vocabul
 
 - **Geom tile** (`stories/geom_tile.md`) — Heatmap / tile plot with two categorical axes and fill color.
 - **Zoom & pan** (`stories/zoom_pan.md`) — Activate the view transform uniform with mouse/trackpad input.
-- **Nested layouts / sparklines** (`stories/nested_layouts_sparklines.md`) — Nest mini-plots inside layout cells.
+- **Geom smooth** (`stories/geom_smooth.md`) -- Regression lines
+- **Position jitter** (`stories/position_jitter.md`) -- Add random offsets to positions
 
 ## Backlog — Integrations
 

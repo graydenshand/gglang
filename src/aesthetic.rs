@@ -8,6 +8,7 @@ pub enum Aesthetic {
     Group,
     Alpha,
     Label,
+    Shape,
 }
 
 impl Aesthetic {
@@ -20,6 +21,7 @@ impl Aesthetic {
             Aesthetic::Group,
             Aesthetic::Alpha,
             Aesthetic::Label,
+            Aesthetic::Shape,
         ]
     }
 
@@ -32,6 +34,7 @@ impl Aesthetic {
             Aesthetic::Group => AestheticFamily::Group,
             Aesthetic::Alpha => AestheticFamily::Alpha,
             Aesthetic::Label => AestheticFamily::Label,
+            Aesthetic::Shape => AestheticFamily::Shape,
         }
     }
 
@@ -44,6 +47,7 @@ impl Aesthetic {
             Aesthetic::Group => "group",
             Aesthetic::Alpha => "alpha",
             Aesthetic::Label => "label",
+            Aesthetic::Shape => "shape",
         }
     }
 }
@@ -58,6 +62,7 @@ pub enum AestheticFamily {
     Group,
     Alpha,
     Label,
+    Shape,
 }
 
 /// A mapping from a data variable to an aesthetic channel.
@@ -72,6 +77,27 @@ pub struct Mapping {
 pub enum ConstantValue {
     Color([f32; 3]),
     Float(f64),
+    Shape(u32),
+}
+
+/// Number of distinct shape glyphs supported by the shape palette.
+pub const NUM_SHAPES: u32 = 5;
+
+/// Parse a shape name (e.g. `"triangle"`) into a shape index.
+///
+/// Index mapping: 0=circle, 1=triangle, 2=square, 3=diamond, 4=cross.
+pub fn parse_shape_name(s: &str) -> Result<u32, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "circle" => Ok(0),
+        "triangle" => Ok(1),
+        "square" => Ok(2),
+        "diamond" => Ok(3),
+        "cross" | "plus" => Ok(4),
+        other => Err(format!(
+            "Unknown shape '{}'. Expected one of: circle, triangle, square, diamond, cross",
+            other
+        )),
+    }
 }
 
 /// Parse a `#RRGGBB` hex string into a linear `[f32; 3]` RGB triple.

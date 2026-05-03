@@ -52,7 +52,7 @@ ylabel_statement = { "YLABEL" ~ string_literal }
 map_statement = { "MAP" ~ data_mappings }
 data_mappings = { data_mapping ~ ("," ~ data_mapping)* }
 data_mapping = { aesthetic ~ "=" ~ data_reference }
-aesthetic = { "x" | "y" | "color" | "fill" | "group" | "alpha" | "label" }
+aesthetic = { "x" | "y" | "color" | "fill" | "group" | "alpha" | "label" | "shape" }
 data_reference = { ":" ~ identifier }
 
 // Geometry Statement

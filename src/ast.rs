@@ -94,6 +94,7 @@ pub enum AstAesthetic {
     Group,
     Alpha,
     Label,
+    Shape,
 }
 
 #[derive(Debug)]
@@ -256,6 +257,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "group" => AstAesthetic::Group,
                                             "alpha" => AstAesthetic::Alpha,
                                             "label" => AstAesthetic::Label,
+                                            "shape" => AstAesthetic::Shape,
                                             other => {
                                                 return Err(GglangError::Parse {
                                                     message: format!(
@@ -332,6 +334,7 @@ pub fn parse(source: &str) -> Result<Program, GglangError> {
                                             "group" => AstAesthetic::Group,
                                             "alpha" => AstAesthetic::Alpha,
                                             "label" => AstAesthetic::Label,
+                                            "shape" => AstAesthetic::Shape,
                                             other => {
                                                 return Err(GglangError::Parse {
                                                     message: format!(

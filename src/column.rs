@@ -73,6 +73,7 @@ pub enum MappedColumn {
     UnitArray(Vec<Unit>),
     ColorArray(Vec<[f32; 3]>),
     FloatArray(Vec<f32>),
+    ShapeArray(Vec<u32>),
 }
 
 impl MappedColumn {
@@ -81,6 +82,7 @@ impl MappedColumn {
             Self::UnitArray(v) => v.len(),
             Self::ColorArray(v) => v.len(),
             Self::FloatArray(v) => v.len(),
+            Self::ShapeArray(v) => v.len(),
         }
     }
 }

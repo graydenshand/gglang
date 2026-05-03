@@ -121,12 +121,28 @@ pub struct PolylineData {
     pub colors: Vec<[f32; 4]>, // per-point RGBA
 }
 
+/// Per-shape linear size multiplier so that all glyphs occupy approximately
+/// equal screen area for a given nominal `PointData::size`. Reference is the
+/// circle (multiplier 1.0); other shapes scale up to compensate for their
+/// lower fill ratio inside their bounding circle.
+pub fn shape_size_multiplier(shape: u32) -> f32 {
+    match shape {
+        1 => 1.555, // triangle
+        2 => 1.253, // square
+        3 => 1.253, // diamond
+        4 => 1.241, // cross
+        _ => 1.0,   // circle (and fallback)
+    }
+}
+
 /// Domain-level point data — position, size, and color in layout-relative units.
 /// Converted to GPU instances in Frame.
 pub struct PointData {
     pub position: [Unit; 2],
     pub size: Unit,
     pub color: [f32; 4],
+    /// Shape glyph index: 0=circle, 1=triangle, 2=square, 3=diamond, 4=cross.
+    pub shape: u32,
 }
 
 /// Domain-level arc/wedge data — used for pie charts and polar bar rendering.

@@ -1,0 +1,63 @@
+---
+source: tests/svg_snapshots.rs
+expression: svg
+---
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+<rect x="0" y="0" width="1200" height="900" fill="white"/>
+<defs>
+  <clipPath id="cp0"><rect x="95.00" y="125.00" width="874.00" height="710.00"/></clipPath>
+  <clipPath id="cp1"><rect x="985.00" y="125.00" width="200.00" height="710.00"/></clipPath>
+  <clipPath id="cp2"><rect x="15.00" y="15.00" width="1170.00" height="110.00"/></clipPath>
+  <clipPath id="cp3"><rect x="71.00" y="835.00" width="922.00" height="50.00"/></clipPath>
+  <clipPath id="cp4"><rect x="-9.00" y="113.00" width="104.00" height="734.00"/></clipPath>
+</defs>
+<g clip-path="url(#cp0)">
+  <circle cx="234.05" cy="802.73" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <polygon points="432.68,467.56 421.91,486.22 443.46,486.22" fill="rgba(0,0,0,1.0000)"/>
+  <circle cx="631.32" cy="695.15" r="8.00" fill="rgba(0,0,0,1.0000)"/>
+  <rect x="822.87" y="150.18" width="14.18" height="14.18" fill="rgba(0,0,0,1.0000)"/>
+  <polygon points="333.36,359.98 322.59,378.64 344.14,378.64" fill="rgba(0,0,0,1.0000)"/>
+  <rect x="723.55" y="580.49" width="14.18" height="14.18" fill="rgba(0,0,0,1.0000)"/>
+</g>
+<g clip-path="url(#cp1)">
+  <circle cx="1005.00" cy="231.50" r="7.00" fill="rgba(0,0,0,1.0000)"/>
+  <text x="1029.00" y="231.50" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">setosa</text>
+  <polygon points="1005.00,284.51 995.57,300.84 1014.43,300.84" fill="rgba(0,0,0,1.0000)"/>
+  <text x="1029.00" y="295.40" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">versicolor</text>
+  <rect x="998.80" y="353.10" width="12.40" height="12.40" fill="rgba(0,0,0,1.0000)"/>
+  <text x="1029.00" y="359.30" font-size="32" font-family="sans-serif" text-anchor="start" dominant-baseline="central" fill="#000000" fill-opacity="1.000">virginica</text>
+</g>
+<g clip-path="url(#cp2)">
+  <text x="600.00" y="70.00" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
+    <tspan x="600.00" dy="0.0">Scatter by shape</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp3)">
+  <rect x="95.00" y="834.50" width="874.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="134.23" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="134.73" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">0</text>
+  <rect x="332.86" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="333.36" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">2</text>
+  <rect x="531.50" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="532.00" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">4</text>
+  <rect x="730.14" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="730.64" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">6</text>
+  <rect x="928.77" y="832.00" width="1.00" height="6.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="929.27" y="840.00" font-size="24" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">8</text>
+  <text x="532.00" y="860.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="hanging" fill="#000000" fill-opacity="1.000">
+    <tspan x="532.00" dy="0.0">x</tspan>
+  </text>
+</g>
+<g clip-path="url(#cp4)">
+  <rect x="94.50" y="125.00" width="1.00" height="710.00" fill="rgba(179,179,179,1.0000)"/>
+  <rect x="92.00" y="802.23" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="802.73" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">2</text>
+  <rect x="92.00" y="587.08" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="587.58" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">4</text>
+  <rect x="92.00" y="371.92" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="372.42" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">6</text>
+  <rect x="92.00" y="156.77" width="6.00" height="1.00" fill="rgba(179,179,179,1.0000)"/>
+  <text x="83.00" y="157.27" font-size="24" font-family="sans-serif" text-anchor="end" dominant-baseline="central" fill="#000000" fill-opacity="1.000">8</text>
+  <text x="35.00" y="480.00" font-size="36" font-family="sans-serif" text-anchor="middle" dominant-baseline="central" fill="#000000" fill-opacity="1.000" transform="rotate(-90,35.00,480.00)">y</text>
+</g>
+</svg>

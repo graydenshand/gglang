@@ -1,8 +1,8 @@
-use crate::aesthetic::{Aesthetic, AestheticFamily};
+use crate::aesthetic::{Aesthetic, AestheticFamily, NUM_SHAPES};
 use crate::column::{AesData, MappedColumn, RawColumn};
 use crate::error::GglangError;
 use crate::layout::{PlotRegion, Unit};
-use crate::shape::{Element, GradientBarData, HAlign, Rectangle, Text, VAlign};
+use crate::shape::{Element, GradientBarData, HAlign, PointData, Rectangle, Text, VAlign};
 use crate::theme::Theme;
 use crate::transform::{nice_bounds, nice_step, ContinuousNumericScale, NDC_SCALE};
 
@@ -1105,6 +1105,107 @@ pub fn default_scale_for(aesthetic: &Aesthetic, data_hint: Option<&RawColumn>) -
         Aesthetic::Group => None,
         Aesthetic::Alpha => Some(Box::new(ScaleAlphaContinuous::new())),
         Aesthetic::Label => None,
+        Aesthetic::Shape => Some(Box::new(ScaleShapeDiscrete::new())),
+    }
+}
+
+/// Discrete shape scale — maps unique string categories to a cycling palette of
+/// shape indices (0=circle, 1=triangle, 2=square, 3=diamond, 4=cross).
+pub struct ScaleShapeDiscrete {
+    categories: Vec<String>,
+    palette: Vec<u32>,
+}
+
+impl ScaleShapeDiscrete {
+    pub fn new() -> Self {
+        Self {
+            categories: vec![],
+            palette: vec![],
+        }
+    }
+}
+
+impl Scale for ScaleShapeDiscrete {
+    fn append(&mut self, v: &RawColumn) -> Result<(), GglangError> {
+        match v {
+            RawColumn::StringArray(strings) => {
+                for s in strings {
+                    if !self.categories.contains(s) {
+                        self.categories.push(s.clone());
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(GglangError::Render {
+                message: "ScaleShapeDiscrete expects StringArray".to_string(),
+            }),
+        }
+    }
+
+    fn fit(&mut self) -> Result<(), GglangError> {
+        self.palette = (0..self.categories.len())
+            .map(|i| (i as u32) % NUM_SHAPES)
+            .collect();
+        Ok(())
+    }
+
+    fn map(&self, v: &RawColumn) -> Result<MappedColumn, GglangError> {
+        match v {
+            RawColumn::StringArray(strings) => {
+                let shapes: Result<Vec<u32>, GglangError> = strings
+                    .iter()
+                    .map(|s| {
+                        self.categories
+                            .iter()
+                            .position(|c| c == s)
+                            .map(|idx| self.palette[idx])
+                            .ok_or_else(|| GglangError::Render {
+                                message: format!("Category '{}' not found in shape scale", s),
+                            })
+                    })
+                    .collect();
+                Ok(MappedColumn::ShapeArray(shapes?))
+            }
+            _ => Err(GglangError::Render {
+                message: "ScaleShapeDiscrete expects StringArray".to_string(),
+            }),
+        }
+    }
+
+    fn render(&self, theme: &Theme) -> Result<(PlotRegion, Vec<Element>), GglangError> {
+        let mut elements = vec![];
+        let y_start = 0.7_f32;
+        let spacing = 0.18_f32;
+
+        for (i, cat) in self.categories.iter().enumerate() {
+            let y = y_start - (i as f32 * spacing);
+            elements.push(Element::Point(PointData {
+                position: [Unit::Percent(10.0), Unit::NDC(y)],
+                size: Unit::Pixels(14),
+                color: [0.0, 0.0, 0.0, 1.0],
+                shape: self.palette[i],
+            }));
+            elements.push(Element::Text(
+                Text::new(
+                    cat.clone(),
+                    theme.legend_label_font_size,
+                    (Unit::Percent(22.0), Unit::NDC(y)),
+                )
+                .with_v_align(VAlign::Center),
+            ));
+        }
+        Ok((PlotRegion::Legend, elements))
+    }
+
+    fn aesthetic_family(&self) -> AestheticFamily {
+        AestheticFamily::Shape
+    }
+
+    fn clone_unfitted(&self) -> Box<dyn Scale> {
+        Box::new(ScaleShapeDiscrete {
+            categories: vec![],
+            palette: vec![],
+        })
     }
 }
 

@@ -90,6 +90,13 @@ fn get_alpha(data: &ResolvedData, n: usize) -> Vec<f32> {
     }
 }
 
+fn get_shape(data: &ResolvedData, n: usize) -> Vec<u32> {
+    match data.mapped.get(&Aesthetic::Shape) {
+        Some(MappedColumn::ShapeArray(v)) => v.clone(),
+        _ => vec![0; n],
+    }
+}
+
 /// GeomPoint renders a marker for every data point.
 ///
 /// It is used to create the archetypal "Scatterplot".
@@ -104,7 +111,7 @@ impl Geometry for GeomPoint {
     }
 
     fn extra_aesthetics(&self) -> Vec<Aesthetic> {
-        vec![Aesthetic::Color, Aesthetic::Alpha]
+        vec![Aesthetic::Color, Aesthetic::Alpha, Aesthetic::Shape]
     }
 
     fn render(&self, data: &ResolvedData) -> Result<Vec<Element>, GglangError> {
@@ -140,6 +147,7 @@ impl Geometry for GeomPoint {
 
         let n = x_mapped.len();
         let alphas = get_alpha(data, n);
+        let shapes = get_shape(data, n);
         let mut points = Vec::with_capacity(n);
         for i in 0..n {
             let color = colors.map_or([0.0, 0.0, 0.0, alphas[i]], |c| {
@@ -150,6 +158,7 @@ impl Geometry for GeomPoint {
                 position: [x_mapped[i], y_mapped[i]],
                 size: Unit::Pixels(16),
                 color,
+                shape: shapes[i],
             }));
         }
         Ok(points)

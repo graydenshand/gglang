@@ -196,6 +196,11 @@ impl Blueprint {
                         .mapped
                         .insert(*aes, MappedColumn::ColorArray(vec![*rgb; data_len]));
                 }
+                ConstantValue::Shape(idx) => {
+                    resolved
+                        .mapped
+                        .insert(*aes, MappedColumn::ShapeArray(vec![*idx; data_len]));
+                }
                 ConstantValue::Float(f) => {
                     if aes.family() == AestheticFamily::Alpha {
                         // Alpha constant: inject directly as FloatArray, no scale lookup needed
@@ -383,7 +388,7 @@ impl Blueprint {
                 let has_legend = self
                     .scales
                     .iter()
-                    .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill));
+                    .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill | AestheticFamily::Shape));
                 let layout = match &spec {
                     FacetSpec::Wrap { variable, columns, scales } => {
                         let facet_col = raw_data.get(variable).ok_or_else(|| GglangError::Render {
@@ -482,7 +487,7 @@ impl Blueprint {
                 let has_legend = self
                     .scales
                     .iter()
-                    .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill));
+                    .any(|s| matches!(s.aesthetic_family(), AestheticFamily::Color | AestheticFamily::Fill | AestheticFamily::Shape));
                 let layout = if self.coordinates.is_polar() {
                     polar_plot_layout(self.title.is_some(), self.caption.is_some(), has_legend, &self.theme)
                 } else {
@@ -1163,6 +1168,7 @@ impl CoordinateSystem {
                             position: [x, y],
                             size: p.size,
                             color: p.color,
+                            shape: p.shape,
                         })
                     }
                     Element::Polyline(pl) => {
